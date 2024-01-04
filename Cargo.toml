@@ -1,0 +1,3 @@
+
+[workspace]
+members = ["libcsp-sys", "libcsp"]
