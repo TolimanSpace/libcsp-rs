@@ -2,30 +2,28 @@ use std::env;
 use std::path::PathBuf;
 
 pub fn main() {
-    println!("cargo:rustc-link-lib=static={}", "csp");
+    println!("cargo:rustc-link-lib=dylib={}", "csp");
     println!("cargo:rustc-link-lib=dylib={}", "zmq");
-    println!(
-        "cargo:rustc-link-search=native={}",
-        "/home/arduano/programming/spiralblue/libcsp-rs/libcsp-sys/libcsp/builddir"
-    );
+
+    // Get LIBCSP_DIR from environment variable, or use default
+    // let lib_dir = env::var("LIBCSP_DIR").unwrap_or("/usr/local".to_string());
+
+    // println!("cargo:rustc-link-search=native={lib_dir}/lib");
 
     println!("cargo:rerun-if-changed=wrapper.h");
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
     let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
         .header("wrapper.h")
-        .clang_args(&["-I/home/arduano/programming/spiralblue/libcsp-rs/libcsp-sys/libcsp/include"])
-        .clang_args(&["-I/home/arduano/programming/spiralblue/libcsp-rs/libcsp-sys/libcsp/builddir/include"])
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
+        .clang_args(&[
+            #[cfg(feature = "zmq")]
+            "-DCSP_RS_ZMQ",
+            #[cfg(feature = "socketcan")]
+            "-DCSP_RS_SOCKETCAN",
+            #[cfg(feature = "usart")]
+            "-DCSP_RS_USART",
+        ])
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
-        // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
