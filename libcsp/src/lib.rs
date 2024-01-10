@@ -1,8 +1,4 @@
-use std::{
-    ffi::{CStr, CString},
-    mem::ManuallyDrop,
-    sync::{Mutex, MutexGuard},
-};
+use std::sync::Mutex;
 
 use libcsp_sys::*;
 use once_cell::sync::Lazy;
@@ -10,9 +6,16 @@ use utils::to_owned_c_str_ptr;
 
 mod interface;
 pub use interface::*;
+mod route;
+pub use route::*;
+mod socket;
+pub use socket::*;
+mod port;
+pub use port::*;
 
 mod errors;
-pub use errors::*;
+use errors::csp_assert;
+pub use errors::{CspError, CspErrorKind};
 
 mod utils;
 
@@ -26,7 +29,7 @@ pub struct LibCspBuilder<'a> {
 impl<'a> LibCspBuilder<'a> {
     pub fn new(config: LibCspConfig) -> Self {
         Self {
-            debug_channels: &[],
+            debug_channels: CspDebugChannel::up_to_error(),
             config,
         }
     }
@@ -90,6 +93,54 @@ impl LibCspInstance {
     fn new(config: LibCspConfig) -> Self {
         Self { config }
     }
+
+    /// Associates a route with an interface and adds it to the route table on the global LibCSP instance.
+    pub fn add_interface_route(
+        &self,
+        address: Route,
+        interface: impl InterfaceBuilder,
+    ) -> Result<(), CspError> {
+        let int = interface.build(self.config.address)?;
+        unsafe {
+            let result = csp_rtable_set(address.address, address.netmask, int, address.via);
+            csp_assert!(result, "Failed to add interface");
+        }
+
+        Ok(())
+    }
+
+    pub fn open_server_socket(&self, port: CspPort) -> Result<CspSocket, CspError> {
+        unsafe {
+            let socket_ptr = csp_socket(CSP_SO_NONE);
+            csp_bind(socket_ptr, port.as_u8());
+            csp_listen(socket_ptr, self.config.connection_backlog);
+
+            Ok(CspSocket::from_ptr(socket_ptr))
+        }
+    }
+
+    pub fn server_socket_builder(&self) -> Result<CspSocketBuilder<()>, CspError> {
+        let socket = self.open_server_socket(CspPort::any_port())?;
+        Ok(CspSocketBuilder::new(socket))
+    }
+
+    pub fn print_conn_table(&self) {
+        unsafe {
+            csp_conn_print_table();
+        }
+    }
+
+    pub fn print_iflist(&self) {
+        unsafe {
+            csp_iflist_print();
+        }
+    }
+
+    pub fn print_rtable(&self) {
+        unsafe {
+            csp_rtable_print();
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -123,8 +174,20 @@ impl CspDebugChannel {
         ]
     }
 
-    pub fn up_to(&self) -> &[Self] {
-        &Self::all()[..=*self as usize]
+    pub fn up_to(self) -> &'static [Self] {
+        &Self::all()[..=self as usize]
+    }
+
+    pub fn up_to_error() -> &'static [Self] {
+        Self::up_to(Self::Error)
+    }
+
+    pub fn up_to_warn() -> &'static [Self] {
+        Self::up_to(Self::Warn)
+    }
+
+    pub fn up_to_info() -> &'static [Self] {
+        Self::up_to(Self::Info)
     }
 }
 
@@ -141,9 +204,90 @@ pub struct LibCspConfig {
     pub buffers: u16,
     pub buffer_data_size: u16,
     pub conn_dfl_so: u32,
+    pub connection_backlog: usize,
 }
 
 impl LibCspConfig {
+    pub fn new(address: u8) -> Self {
+        Self {
+            address,
+            ..Default::default()
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn details(
+        self,
+        hostname: impl Into<String>,
+        model: impl Into<String>,
+        revision: impl Into<String>,
+    ) -> Self {
+        Self {
+            hostname: hostname.into(),
+            model: model.into(),
+            revision: revision.into(),
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn conn_max(self, conn_max: u8) -> Self {
+        Self { conn_max, ..self }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn conn_queue_length(self, conn_queue_length: u8) -> Self {
+        Self {
+            conn_queue_length,
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn fifo_length(self, fifo_length: u8) -> Self {
+        Self {
+            fifo_length,
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn port_max_bind(self, port_max_bind: u8) -> Self {
+        Self {
+            port_max_bind,
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn rdp_max_window(self, rdp_max_window: u8) -> Self {
+        Self {
+            rdp_max_window,
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn buffers(self, buffers: u16) -> Self {
+        Self { buffers, ..self }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn buffer_data_size(self, buffer_data_size: u16) -> Self {
+        Self {
+            buffer_data_size,
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    pub fn conn_dfl_so(self, conn_dfl_so: u32) -> Self {
+        Self {
+            conn_dfl_so,
+            ..self
+        }
+    }
+
     fn to_csp_conf_t(&self) -> csp_conf_t {
         csp_conf_t {
             address: self.address,
@@ -166,9 +310,9 @@ impl Default for LibCspConfig {
     fn default() -> Self {
         Self {
             address: 1,
-            hostname: "hostname".to_string(),
-            model: "model".to_string(),
-            revision: "resvision".to_string(),
+            hostname: "{hostname unspecified}".to_string(),
+            model: "{model unspecified}".to_string(),
+            revision: "{resvision unspecified}".to_string(),
             conn_max: 10,
             conn_queue_length: 10,
             fifo_length: 25,
@@ -177,6 +321,7 @@ impl Default for LibCspConfig {
             buffers: 10,
             buffer_data_size: 256,
             conn_dfl_so: CSP_O_NONE,
+            connection_backlog: 10,
         }
     }
 }

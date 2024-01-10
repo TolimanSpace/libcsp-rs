@@ -1,5 +1,5 @@
 use libcsp_sys::*;
-use std::{os::raw::c_void, ptr, thread, time::Duration};
+use std::{ptr, thread, time::Duration};
 
 const MY_SERVER_PORT: u16 = 10;
 

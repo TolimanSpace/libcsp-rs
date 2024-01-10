@@ -1,5 +1,5 @@
 use libcsp_sys::*;
-use std::{os::raw::c_void, ptr, thread, time::Duration};
+use std::thread;
 
 const MY_SERVER_PORT: u16 = 10;
 
@@ -91,12 +91,7 @@ fn main() {
         let mut default_iface = std::ptr::null_mut();
 
         // Initialize ZMQ interface
-        let error = csp_zmqhub_init(
-            csp_get_address(),
-            zmq_device.as_ptr() as *const i8,
-            0,
-            &mut default_iface,
-        );
+        let error = csp_zmqhub_init(27, zmq_device.as_ptr() as *const i8, 0, &mut default_iface);
         if error != 0 {
             eprintln!(
                 "Failed to add ZMQ interface [{}], error: {}",

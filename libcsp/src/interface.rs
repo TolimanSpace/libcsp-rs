@@ -1,33 +1,80 @@
-use libcsp_sys::{csp_iface_t, csp_zmqhub_init};
+use libcsp_sys::{
+    csp_iface_t, csp_zmqhub_init, csp_zmqhub_init_w_endpoints,
+    csp_zmqhub_init_w_name_endpoints_rxfilter,
+};
 
-use crate::utils::to_owned_c_str_ptr;
+use crate::{csp_assert, utils::to_owned_c_str_ptr, CspError};
 
-pub struct CspInterface {
-    iface: *mut csp_iface_t,
+pub trait InterfaceBuilder {
+    fn build(self, address: u8) -> Result<*mut csp_iface_t, CspError>;
 }
 
-impl CspInterface {
-    pub fn new_zmq(address: u8, host: &str, flags: u32) -> Self {
-        let mut return_interface = std::ptr::null_mut();
-        let result = unsafe {
-            csp_zmqhub_init(
-                address,
-                to_owned_c_str_ptr(host),
-                flags,
-                &mut return_interface,
-            )
-        };
+pub enum CspZmqInterface<'a> {
+    Basic {
+        host: &'a str,
+        zmq_flags: u32,
+    },
+    WithEndpoints {
+        publish_endpoint: &'a str,
+        subscribe_endpoint: &'a str,
+        zmq_flags: u32,
+    },
+    WithNameEndpointsFilter {
+        ifname: &'a str,
+        rx_filter: &'a [u8],
+        publish_endpoint: &'a str,
+        subscribe_endpoint: &'a str,
+        zmq_flags: u32,
+    },
+}
 
-        return Self {
-            iface: return_interface,
-        };
+impl<'a> CspZmqInterface<'a> {
+    pub fn new_basic(host: &'a str, zmq_flags: u32) -> Self {
+        Self::Basic { host, zmq_flags }
     }
 }
 
-impl Drop for CspInterface {
-    fn drop(&mut self) {
-        // Warn that the interface is being dropped while LibCSP doesn't support disposing of interfaces.
-        // This is a memory leak.
-        eprintln!("Dropping CspInterface while LibCSP doesn't support disposing of interfaces. This is a memory leak.");
+impl InterfaceBuilder for CspZmqInterface<'_> {
+    fn build(self, address: u8) -> Result<*mut csp_iface_t, CspError> {
+        let mut return_interface = std::ptr::null_mut();
+        unsafe {
+            let result = match self {
+                CspZmqInterface::Basic { host, zmq_flags } => csp_zmqhub_init(
+                    address,
+                    to_owned_c_str_ptr(host),
+                    zmq_flags,
+                    &mut return_interface,
+                ),
+                CspZmqInterface::WithEndpoints {
+                    publish_endpoint,
+                    subscribe_endpoint,
+                    zmq_flags,
+                } => csp_zmqhub_init_w_endpoints(
+                    address,
+                    to_owned_c_str_ptr(publish_endpoint),
+                    to_owned_c_str_ptr(subscribe_endpoint),
+                    zmq_flags,
+                    &mut return_interface,
+                ),
+                CspZmqInterface::WithNameEndpointsFilter {
+                    ifname,
+                    rx_filter,
+                    publish_endpoint,
+                    subscribe_endpoint,
+                    zmq_flags,
+                } => csp_zmqhub_init_w_name_endpoints_rxfilter(
+                    to_owned_c_str_ptr(ifname),
+                    rx_filter.as_ptr(),
+                    rx_filter.len() as u32,
+                    to_owned_c_str_ptr(publish_endpoint),
+                    to_owned_c_str_ptr(subscribe_endpoint),
+                    zmq_flags,
+                    &mut return_interface,
+                ),
+            };
+            csp_assert!(result, "Failed to initialize ZMQ interface");
+        };
+
+        Ok(return_interface)
     }
 }
