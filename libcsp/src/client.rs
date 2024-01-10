@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{io::Write, ptr::NonNull, time::Duration};
 
 use libcsp_sys::{
     csp_buffer_get, csp_close, csp_conn_t, csp_connect, csp_packet_t, csp_ping,
@@ -6,7 +6,10 @@ use libcsp_sys::{
     csp_prio_t_CSP_PRIO_NORM, csp_send, CSP_O_NONE,
 };
 
-use crate::{errors::csp_assert, CspError, CspErrorKind, LibCspConfig};
+use crate::{
+    errors::{csp_assert, result_from_i32},
+    CspError, CspErrorKind, LibCspConfig,
+};
 
 pub struct CspClient {
     max_buffer_size: u16,
@@ -108,7 +111,7 @@ impl CspClientConnection {
             }
 
             let data = &mut (*packet).__bindgen_anon_1.data as *mut _ as *mut u8;
-            let slice = std::slice::from_raw_parts_mut(data, self.max_buffer_size as usize);
+            let slice = std::slice::from_raw_parts_mut(data, (*packet).length as usize);
             let length = f(slice);
             assert!(
                 length <= self.max_buffer_size as usize,
@@ -136,6 +139,14 @@ impl CspClientConnection {
             data.len()
         })
     }
+
+    pub fn into_writer(self) -> CspClientConnectionWriter {
+        CspClientConnectionWriter {
+            connection: self,
+            packet: None,
+            pos: 0,
+        }
+    }
 }
 
 impl Drop for CspClientConnection {
@@ -143,5 +154,91 @@ impl Drop for CspClientConnection {
         unsafe {
             csp_close(self.connection);
         }
+    }
+}
+
+pub struct CspClientConnectionWriter {
+    connection: CspClientConnection,
+    packet: Option<NonNull<csp_packet_t>>,
+    pos: usize,
+}
+
+impl std::io::Write for CspClientConnectionWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut remaining_buf = buf;
+        let mut written = 0;
+        loop {
+            if remaining_buf.len() == 0 {
+                return Ok(written);
+            }
+
+            let packet = match self.packet {
+                Some(packet) => packet.as_ptr(),
+                None => {
+                    let packet = unsafe {
+                        let packet = csp_buffer_get(self.connection.max_buffer_size as usize)
+                            as *mut csp_packet_t;
+                        if packet.is_null() {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                "Failed to get CSP buffer, no buffers left in the buffer pool.",
+                            ));
+                        }
+                        NonNull::new_unchecked(packet)
+                    };
+                    self.packet = Some(packet);
+                    packet.as_ptr()
+                }
+            };
+
+            let slice = unsafe {
+                let data = &mut (*packet).__bindgen_anon_1.data as *mut _ as *mut u8;
+                let slice = std::slice::from_raw_parts_mut(data, (*packet).length as usize);
+                slice
+            };
+
+            let remaining_slice = &mut slice[self.pos..];
+
+            let to_write = std::cmp::min(remaining_slice.len(), remaining_buf.len());
+            remaining_slice[..to_write].copy_from_slice(&remaining_buf[..to_write]);
+            self.pos += to_write;
+
+            remaining_buf = &remaining_buf[to_write..];
+            written += to_write;
+
+            if self.pos == slice.len() {
+                self.flush()?;
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let Some(packet) = self.packet.take() else {
+            return Ok(());
+        };
+
+        unsafe {
+            (*packet.as_ptr()).length = self.pos as u16;
+            let result = csp_send(
+                self.connection.connection,
+                packet.as_ptr(),
+                Duration::from_secs(1).as_millis() as u32,
+            );
+            if let Err(err) = result_from_i32(result) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    Box::new(err),
+                ));
+            }
+        }
+
+        self.pos = 0;
+        Ok(())
+    }
+}
+
+impl Drop for CspClientConnectionWriter {
+    fn drop(&mut self) {
+        self.flush().ok();
     }
 }

@@ -21,6 +21,33 @@ pub enum CspErrorKind {
     NoBuffersAvailable = 2,
 }
 
+impl std::error::Error for CspErrorKind {}
+
+impl std::fmt::Display for CspErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            CspErrorKind::Nomem => write!(f, "No memory available"),
+            CspErrorKind::Inval => write!(f, "Invalid argument"),
+            CspErrorKind::Timedout => write!(f, "Timed out"),
+            CspErrorKind::Used => write!(f, "Already in use"),
+            CspErrorKind::Notsup => write!(f, "Not supported"),
+            CspErrorKind::Busy => write!(f, "Busy"),
+            CspErrorKind::Already => write!(f, "Already"),
+            CspErrorKind::Reset => write!(f, "Reset"),
+            CspErrorKind::Nobufs => write!(f, "No buffers available"),
+            CspErrorKind::Tx => write!(f, "Transmit error"),
+            CspErrorKind::Driver => write!(f, "Driver error"),
+            CspErrorKind::Again => write!(f, "Again"),
+            CspErrorKind::Hmac => write!(f, "HMAC error"),
+            CspErrorKind::Xtea => write!(f, "XTEA error"),
+            CspErrorKind::Crc32 => write!(f, "CRC32 error"),
+            CspErrorKind::Sfp => write!(f, "SFP error"),
+            CspErrorKind::Unknown(code) => write!(f, "Unknown error code: {}", code),
+            CspErrorKind::NoBuffersAvailable => write!(f, "No buffers available"),
+        }
+    }
+}
+
 pub fn result_from_i32(err_code: i32) -> Result<(), CspErrorKind> {
     match err_code {
         0 => Ok(()),
@@ -52,7 +79,7 @@ pub struct CspError {
 
 impl std::fmt::Display for CspError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "CSP error: {:?}: {}", self.kind, self.message)
+        write!(f, "CSP error: {} ({})", self.message, self.kind)
     }
 }
 
