@@ -1,7 +1,4 @@
-use libcsp::{
-    CspConnPriority, CspDebugChannel, CspZmqInterface, LibCspBuilder, LibCspConfig, LibCspInstance,
-    Route,
-};
+use libcsp::{CspConnPriority, CspDebugChannel, LibCspBuilder, LibCspConfig, LibCspInstance};
 
 use std::{thread, time::Duration};
 
@@ -23,7 +20,7 @@ fn server_task(instance: &LibCspInstance) {
 }
 
 // Client task sending requests to server task
-unsafe fn client_task(instance: &LibCspInstance) {
+fn client_task(instance: &LibCspInstance) {
     let address = 1;
     let client = instance.client();
 
@@ -49,58 +46,15 @@ unsafe fn client_task(instance: &LibCspInstance) {
             .unwrap();
 
         println!("Packet sent");
-
-        // // Example: send a packet to the server
-        // let conn: *mut csp_conn_t = csp_connect(
-        //     csp_prio_t_CSP_PRIO_NORM as u8,
-        //     address,
-        //     MY_SERVER_PORT as u8,
-        //     1000,
-        //     CSP_O_NONE,
-        // );
-        // if conn.is_null() {
-        //     // If connection failed, continue loop
-        //     println!("Connection failed");
-        //     continue;
-        // }
-
-        // let packet: *mut csp_packet_t = csp_buffer_get(256) as *mut csp_packet_t;
-        // if packet.is_null() {
-        //     // If getting a packet buffer failed, continue loop
-        //     println!("Failed to get CSP buffer");
-        //     csp_close(conn);
-        //     continue;
-        // }
-
-        // let msg = "Hello world from Rust";
-
-        // ptr::copy_nonoverlapping(
-        //     msg.as_ptr(),
-        //     &(*packet).__bindgen_anon_1.data as *const _ as *mut u8,
-        //     msg.len(),
-        // );
-        // (*packet).length = msg.len() as u16;
-        // csp_send(conn, packet, 1000);
-        // csp_close(conn);
     }
 }
 
 fn main() {
     let address: u8 = 1; // Choose sensible defaults here
 
-    // let zmq_device = "localhost";
-    // let zmq_device = std::ffi::CString::new(zmq_device).unwrap();
-
     let csp_instance = LibCspBuilder::new(LibCspConfig::new(address))
         .debug_channels(CspDebugChannel::up_to_info())
         .build();
-
-    csp_instance
-        .add_interface_route(
-            Route::default_address(),
-            CspZmqInterface::new_basic("localhost", 0),
-        )
-        .unwrap();
 
     csp_instance.print_conn_table();
     csp_instance.print_iflist();
@@ -108,11 +62,11 @@ fn main() {
 
     thread::scope(|s| {
         // Start server and client tasks in separate threads
-        s.spawn(|| unsafe {
+        s.spawn(|| {
             server_task(&csp_instance);
         });
 
-        s.spawn(|| unsafe {
+        s.spawn(|| {
             client_task(&csp_instance);
         });
     });

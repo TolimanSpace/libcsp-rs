@@ -15,3 +15,7 @@ In the future, I may add static linking to avoid the need for having the dynamic
 ## Compatibility
 
 This crate uses LibCSP version `v1.6`. As of writing, `v1.6` is 4 years old, while the libcsp repository is still active working on the unfinished `v2.0`.
+
+## Caveats
+
+There are a lot of options in LibCSP that are very unclear, I ended up choosing defaults for many things such as connection bitflags and some timeouts. If you need to modify those for any reason, feel free to PR into the library with a better solution. Just make sure you make it configurable with standard Rust practices, e.g. the `bitflags` crate.
