@@ -18,6 +18,7 @@ pub enum CspErrorKind {
     Crc32 = -102,
     Sfp = -103,
     Unknown(i32) = 1,
+    NoBuffersAvailable = 2,
 }
 
 pub fn result_from_i32(err_code: i32) -> Result<(), CspErrorKind> {

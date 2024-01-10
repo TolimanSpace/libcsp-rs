@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, thread};
 
 use libcsp_sys::*;
 use once_cell::sync::Lazy;
@@ -12,6 +12,8 @@ mod socket;
 pub use socket::*;
 mod port;
 pub use port::*;
+mod client;
+pub use client::*;
 
 mod errors;
 use errors::csp_assert;
@@ -75,7 +77,11 @@ impl<'a> LibCspBuilder<'a> {
         unsafe {
             // Initialize the background router task
             // TODO: Which parameters are actually needed here?
-            csp_route_start_task(500, 0);
+            // csp_route_start_task(500, 0);
+
+            thread::spawn(|| loop {
+                csp_route_work(1000);
+            });
         }
 
         LibCspInstance::new(self.config)
@@ -97,12 +103,12 @@ impl LibCspInstance {
     /// Associates a route with an interface and adds it to the route table on the global LibCSP instance.
     pub fn add_interface_route(
         &self,
-        address: Route,
+        route: Route,
         interface: impl InterfaceBuilder,
     ) -> Result<(), CspError> {
         let int = interface.build(self.config.address)?;
         unsafe {
-            let result = csp_rtable_set(address.address, address.netmask, int, address.via);
+            let result = csp_rtable_set(route.address, route.netmask, int, route.via);
             csp_assert!(result, "Failed to add interface");
         }
 
@@ -122,6 +128,10 @@ impl LibCspInstance {
     pub fn server_socket_builder(&self) -> Result<CspSocketBuilder<()>, CspError> {
         let socket = self.open_server_socket(CspPort::any_port())?;
         Ok(CspSocketBuilder::new(socket))
+    }
+
+    pub fn client(&self) -> CspClient {
+        CspClient::new(&self.config)
     }
 
     pub fn print_conn_table(&self) {
@@ -313,15 +323,15 @@ impl Default for LibCspConfig {
             hostname: "{hostname unspecified}".to_string(),
             model: "{model unspecified}".to_string(),
             revision: "{resvision unspecified}".to_string(),
-            conn_max: 10,
-            conn_queue_length: 10,
+            conn_max: 64,
+            conn_queue_length: 64,
             fifo_length: 25,
             port_max_bind: 24,
             rdp_max_window: 20,
-            buffers: 10,
+            buffers: 256,
             buffer_data_size: 256,
             conn_dfl_so: CSP_O_NONE,
-            connection_backlog: 10,
+            connection_backlog: 64,
         }
     }
 }

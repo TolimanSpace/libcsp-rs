@@ -254,3 +254,81 @@ impl<'a> Iterator for CspConnectionPacketIter<'a> {
         }
     }
 }
+
+pub struct CspConnectionPacketReader<'a> {
+    connection: *mut csp_conn_t,
+    packet: PacketReaderState,
+    pos: usize,
+    _marker: std::marker::PhantomData<&'a CspConnection>,
+}
+
+enum PacketReaderState {
+    NoPacket,
+    Packet(NonNull<csp_packet_t>),
+    Finished,
+}
+
+impl<'a> CspConnectionPacketReader<'a> {
+    pub fn new(connection: &'a CspConnection) -> Self {
+        Self {
+            connection: connection.connection,
+            packet: PacketReaderState::NoPacket,
+            pos: 0,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a> std::io::Read for CspConnectionPacketReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut read = 0;
+
+        loop {
+            let next_packet = match &self.packet {
+                PacketReaderState::NoPacket => {
+                    let packet = unsafe { csp_read(self.connection, PACKET_TIMEOUT_MS) };
+                    let packet = NonNull::new(packet);
+
+                    match packet {
+                        Some(packet) => {
+                            self.packet = PacketReaderState::Packet(packet);
+                            packet
+                        }
+                        None => {
+                            self.packet = PacketReaderState::Finished;
+                            return Ok(read);
+                        }
+                    }
+                }
+                PacketReaderState::Packet(packet) => *packet,
+                PacketReaderState::Finished => return Ok(read),
+            };
+
+            let remaining_buf = unsafe {
+                let data = &(*next_packet.as_ptr()).__bindgen_anon_1.data as *const _ as *const u8;
+                let length = (*next_packet.as_ptr()).length;
+                let slice = std::slice::from_raw_parts(data, length as usize);
+
+                &slice[self.pos..]
+            };
+
+            let to_write = std::cmp::min(buf.len() - read, remaining_buf.len());
+
+            buf[read..read + to_write].copy_from_slice(&remaining_buf[..to_write]);
+            read += to_write;
+
+            self.pos += to_write;
+
+            if self.pos >= remaining_buf.len() {
+                self.pos = 0;
+                self.packet = PacketReaderState::NoPacket;
+            }
+
+            if read >= buf.len() {
+                break;
+            }
+        }
+
+        Ok(read)
+    }
+}
