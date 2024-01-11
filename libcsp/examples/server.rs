@@ -14,7 +14,7 @@ fn server_task(instance: &LibCspInstance) {
         .unwrap()
         .bind_port(MY_SERVER_PORT as u8, |conn| {
             for packet in conn.iter_packets(Duration::from_secs(1)) {
-                let data = String::from_utf8_lossy(packet);
+                let data = String::from_utf8_lossy(packet.as_slice());
                 println!("Packet received on MY_SERVER_PORT: {:?}", data);
             }
         })

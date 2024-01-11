@@ -1,4 +1,4 @@
-use std::{ptr::NonNull, time::Duration};
+use std::{ops::Deref, ptr::NonNull, time::Duration};
 
 use libcsp_sys::{
     csp_accept, csp_buffer_free, csp_conn_dport, csp_conn_dst, csp_conn_sport, csp_conn_src,
@@ -182,6 +182,8 @@ pub struct CspConnection {
     connection: *mut csp_conn_t,
 }
 
+unsafe impl Send for CspConnection {}
+
 impl CspConnection {
     /// Internal "new" function to create a `CspConnection` from a raw pointer to a CSP connection pointer.
     fn new(connection: *mut csp_conn_t, service_timeout_ms: u32) -> Self {
@@ -226,11 +228,11 @@ impl CspConnection {
         }
     }
 
-    pub fn iter_packets(&self, timeout: Duration) -> CspConnectionPacketIter {
+    pub fn iter_packets(self, timeout: Duration) -> CspConnectionPacketIter {
         CspConnectionPacketIter::new(self, timeout)
     }
 
-    pub fn into_reader(&self, timeout: Duration) -> CspConnectionPacketReader {
+    pub fn into_reader(self, timeout: Duration) -> CspConnectionPacketReader {
         CspConnectionPacketReader::new(self, timeout)
     }
 }
@@ -241,49 +243,59 @@ impl Drop for CspConnection {
     }
 }
 
-pub struct CspConnectionPacketIter<'a> {
-    connection: &'a CspConnection, // Keeping the connection alive (making sure it's not dropped)
-    prev_packet: Option<NonNull<csp_packet_t>>,
+pub struct CspConnectionPacketIter {
+    connection: CspConnection, // Keeping the connection alive (making sure it's not dropped)
     timeout_ms: u32,
-    _marker: std::marker::PhantomData<&'a CspConnection>,
 }
 
-impl<'a> CspConnectionPacketIter<'a> {
-    pub fn new(connection: &'a CspConnection, timeout: Duration) -> Self {
+impl CspConnectionPacketIter {
+    pub fn new(connection: CspConnection, timeout: Duration) -> Self {
         Self {
             connection: connection,
-            prev_packet: None,
             timeout_ms: timeout.as_millis() as u32,
-            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<'a> Iterator for CspConnectionPacketIter<'a> {
-    type Item = &'a [u8];
+impl Iterator for CspConnectionPacketIter {
+    type Item = CspPacket;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(prev_packet) = self.prev_packet.take() {
-            unsafe { csp_buffer_free(prev_packet.as_ptr() as *mut std::os::raw::c_void) };
-        }
-
         let packet = unsafe { csp_read(self.connection.connection, self.timeout_ms) };
-        self.prev_packet = NonNull::new(packet);
-
-        if packet.is_null() {
-            None
-        } else {
-            let data = unsafe { &(*packet).__bindgen_anon_1.data as *const _ as *const u8 };
-            let length = unsafe { (*packet).length };
-            let slice = unsafe { std::slice::from_raw_parts(data, length as usize) };
-
-            Some(slice)
-        }
+        let packet = NonNull::new(packet)?;
+        Some(CspPacket { packet })
     }
 }
 
-pub struct CspConnectionPacketReader<'a> {
-    connection: &'a CspConnection, // Keeping the connection alive (making sure it's not dropped)
+pub struct CspPacket {
+    packet: NonNull<csp_packet_t>,
+}
+
+impl CspPacket {
+    pub fn as_slice(&self) -> &[u8] {
+        let data =
+            unsafe { &(*self.packet.as_ptr()).__bindgen_anon_1.data as *const _ as *const u8 };
+        let length = unsafe { (*self.packet.as_ptr()).length };
+        unsafe { std::slice::from_raw_parts(data, length as usize) }
+    }
+}
+
+impl Deref for CspPacket {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl Drop for CspPacket {
+    fn drop(&mut self) {
+        unsafe { csp_buffer_free(self.packet.as_ptr() as *mut std::os::raw::c_void) };
+    }
+}
+
+pub struct CspConnectionPacketReader {
+    connection: CspConnection, // Keeping the connection alive (making sure it's not dropped)
     timeout_ms: u32,
     packet: PacketReaderState,
     pos: usize,
@@ -295,10 +307,10 @@ enum PacketReaderState {
     Finished,
 }
 
-impl<'a> CspConnectionPacketReader<'a> {
-    pub fn new(connection: &'a CspConnection, timeout: Duration) -> Self {
+impl CspConnectionPacketReader {
+    pub fn new(connection: CspConnection, timeout: Duration) -> Self {
         Self {
-            connection: connection,
+            connection,
             timeout_ms: timeout.as_millis() as u32,
             packet: PacketReaderState::NoPacket,
             pos: 0,
@@ -306,7 +318,7 @@ impl<'a> CspConnectionPacketReader<'a> {
     }
 }
 
-impl<'a> std::io::Read for CspConnectionPacketReader<'a> {
+impl<'a> std::io::Read for CspConnectionPacketReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
         let mut remaining_buf = buf;
