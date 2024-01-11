@@ -307,7 +307,7 @@ pub struct CspConnectionPacketReader {
 
 enum PacketReaderState {
     NoPacket,
-    Packet(NonNull<csp_packet_t>),
+    Packet(CspPacket),
     Finished,
 }
 
@@ -341,7 +341,7 @@ impl<'a> std::io::Read for CspConnectionPacketReader {
 
                     match packet {
                         Some(packet) => {
-                            self.packet = PacketReaderState::Packet(packet);
+                            self.packet = PacketReaderState::Packet(CspPacket { packet });
                             packet
                         }
                         None => {
@@ -350,7 +350,7 @@ impl<'a> std::io::Read for CspConnectionPacketReader {
                         }
                     }
                 }
-                PacketReaderState::Packet(packet) => *packet,
+                PacketReaderState::Packet(packet) => packet.packet,
                 PacketReaderState::Finished => return Ok(read),
             };
 
