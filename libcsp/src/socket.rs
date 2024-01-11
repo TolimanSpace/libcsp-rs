@@ -248,6 +248,8 @@ pub struct CspConnectionPacketIter {
     timeout_ms: u32,
 }
 
+unsafe impl Send for CspConnectionPacketIter {}
+
 impl CspConnectionPacketIter {
     pub fn new(connection: CspConnection, timeout: Duration) -> Self {
         Self {
@@ -308,6 +310,8 @@ enum PacketReaderState {
     Packet(NonNull<csp_packet_t>),
     Finished,
 }
+
+unsafe impl Send for CspConnectionPacketReader {}
 
 impl CspConnectionPacketReader {
     pub fn new(connection: CspConnection, timeout: Duration) -> Self {
