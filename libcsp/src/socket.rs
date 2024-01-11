@@ -271,6 +271,8 @@ pub struct CspPacket {
     packet: NonNull<csp_packet_t>,
 }
 
+unsafe impl Send for CspPacket {}
+
 impl CspPacket {
     pub fn as_slice(&self) -> &[u8] {
         let data =
