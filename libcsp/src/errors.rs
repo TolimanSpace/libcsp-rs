@@ -19,6 +19,7 @@ pub enum CspErrorKind {
     Sfp = -103,
     Unknown(i32) = 1,
     NoBuffersAvailable = 2,
+    FailedToSend = 3,
 }
 
 impl std::error::Error for CspErrorKind {}
@@ -44,6 +45,7 @@ impl std::fmt::Display for CspErrorKind {
             CspErrorKind::Sfp => write!(f, "SFP error"),
             CspErrorKind::Unknown(code) => write!(f, "Unknown error code: {}", code),
             CspErrorKind::NoBuffersAvailable => write!(f, "No buffers available"),
+            CspErrorKind::FailedToSend => write!(f, "Failed to send packet"),
         }
     }
 }

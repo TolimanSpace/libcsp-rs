@@ -1,4 +1,4 @@
-use libcsp::{CspConnPriority, CspDebugChannel, LibCspBuilder, LibCspConfig, LibCspInstance};
+use libcsp::{CspConnPriority, CspDebugChannel, LibCspBuilder, LibCspConfig, LibCspInstance, CspConnAddress};
 
 use std::{thread, time::Duration};
 
@@ -8,15 +8,15 @@ const MY_SERVER_PORT: u16 = 10;
 // Server task - handles requests from clients
 fn server_task(instance: &LibCspInstance) {
     instance
-        .server_socket_builder()
+        .server_sync_socket_builder()
         .unwrap()
         .bind_port(MY_SERVER_PORT as u8, |conn| {
-            for packet in conn.iter_packets() {
+            for packet in conn.iter_packets(Duration::from_secs(1)) {
                 let data = String::from_utf8_lossy(packet);
                 println!("Packet received on MY_SERVER_PORT: {:?}", data);
             }
         })
-        .run();
+        .run_sync();
 }
 
 // Client task sending requests to server task
@@ -34,9 +34,8 @@ fn client_task(instance: &LibCspInstance) {
 
         let connection = client
             .connect(
-                address,
+                CspConnAddress::new(address, MY_SERVER_PORT as u8),
                 CspConnPriority::Normal,
-                MY_SERVER_PORT as u8,
                 Duration::from_secs(1),
             )
             .unwrap();

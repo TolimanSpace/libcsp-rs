@@ -5,13 +5,11 @@ use libcsp_sys::{
     csp_conn_t, csp_packet_t, csp_read,
 };
 
-// Timeout for receiving new packets in a single connection
-const PACKET_TIMEOUT_MS: u32 = 100;
-
 /// Represents a CSP socket.
 ///
 /// This struct provides methods for accepting connections on the socket.
 pub struct CspSocket {
+    service_timeout_ms: u32,
     socket: *mut csp_conn_t,
 }
 
@@ -25,8 +23,11 @@ impl CspSocket {
     /// # Returns
     ///
     /// A `CspSocket` instance.
-    pub(crate) fn from_ptr(socket: *mut csp_conn_t) -> Self {
-        Self { socket }
+    pub(crate) fn from_ptr(socket: *mut csp_conn_t, service_timeout_ms: u32) -> Self {
+        Self {
+            service_timeout_ms,
+            socket,
+        }
     }
 
     /// Accepts a connection on the socket with a specified timeout.
@@ -45,7 +46,7 @@ impl CspSocket {
         if conn.is_null() {
             None
         } else {
-            Some(CspConnection::new(conn))
+            Some(CspConnection::new(conn, self.service_timeout_ms))
         }
     }
 
@@ -64,7 +65,7 @@ impl CspSocket {
             if conn.is_null() {
                 continue;
             } else {
-                return CspConnection::new(conn);
+                return CspConnection::new(conn, self.service_timeout_ms);
             }
         }
     }
@@ -74,17 +75,20 @@ pub trait CspPortHandler {
     fn handle(&mut self, conn: CspConnection);
 }
 
-struct CspPortFn<F: FnMut(CspConnection), Next: CspPortHandler> {
+struct CspPortFn<'a, F: 'a + FnMut(CspConnection), Next: CspPortHandler> {
     port: u8,
     f: F,
     inner: Next,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl CspPortHandler for () {
     fn handle(&mut self, _conn: CspConnection) {}
 }
 
-impl<F: FnMut(CspConnection), Next: CspPortHandler> CspPortHandler for CspPortFn<F, Next> {
+impl<'a, F: 'a + FnMut(CspConnection), Next: CspPortHandler> CspPortHandler
+    for CspPortFn<'a, F, Next>
+{
     fn handle(&mut self, conn: CspConnection) {
         if conn.dst.port == self.port {
             let _iter = (self.f)(conn);
@@ -95,33 +99,44 @@ impl<F: FnMut(CspConnection), Next: CspPortHandler> CspPortHandler for CspPortFn
 }
 
 #[must_use = "CspSocketBuilder must be run to accept connections"]
-pub struct CspSocketBuilder<Handlers: CspPortHandler> {
+pub struct CspSocketBuilder<'a, Handlers: CspPortHandler> {
     socket: CspSocket,
     handlers: Handlers,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
-impl CspSocketBuilder<()> {
+impl CspSocketBuilder<'static, ()> {
     pub fn new(socket: CspSocket) -> Self {
         Self {
             socket,
             handlers: (),
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<Handlers: CspPortHandler> CspSocketBuilder<Handlers> {
-    pub fn bind_port(
+impl<'a, Handlers: 'a + CspPortHandler> CspSocketBuilder<'a, Handlers> {
+    pub fn bind_port<'b, F: 'b + FnMut(CspConnection)>(
         self,
         port: u8,
-        f: impl FnMut(CspConnection) + 'static,
-    ) -> CspSocketBuilder<impl CspPortHandler> {
+        f: F,
+    ) -> CspSocketBuilder<'b, impl 'b + CspPortHandler>
+    where
+        'a: 'b,
+    {
         CspSocketBuilder {
             socket: self.socket,
-            handlers: CspPortFn { port, f, inner: () },
+            handlers: CspPortFn {
+                port,
+                f,
+                inner: self.handlers,
+                _marker: std::marker::PhantomData,
+            },
+            _marker: std::marker::PhantomData,
         }
     }
 
-    pub fn run(mut self) -> ! {
+    pub fn run_sync(mut self) -> ! {
         loop {
             let conn = self.socket.accept();
             if conn.is_service_connection() {
@@ -135,11 +150,15 @@ impl<Handlers: CspPortHandler> CspSocketBuilder<Handlers> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CspConnAddress {
-    address: u8,
-    port: u8,
+    pub address: u8,
+    pub port: u8,
 }
 
 impl CspConnAddress {
+    pub fn new(address: u8, port: u8) -> Self {
+        Self { address, port }
+    }
+
     fn is_service_port(&self) -> bool {
         // This should optimize into a simple < comparison, but being verbose is nice for safety.
         let service_ports = [
@@ -159,12 +178,13 @@ impl CspConnAddress {
 pub struct CspConnection {
     src: CspConnAddress,
     dst: CspConnAddress,
+    service_timeout_ms: u32,
     connection: *mut csp_conn_t,
 }
 
 impl CspConnection {
     /// Internal "new" function to create a `CspConnection` from a raw pointer to a CSP connection pointer.
-    fn new(connection: *mut csp_conn_t) -> Self {
+    fn new(connection: *mut csp_conn_t, service_timeout_ms: u32) -> Self {
         unsafe {
             Self {
                 src: CspConnAddress {
@@ -175,6 +195,7 @@ impl CspConnection {
                     address: csp_conn_dst(connection) as u8,
                     port: csp_conn_dport(connection) as u8,
                 },
+                service_timeout_ms,
                 connection,
             }
         }
@@ -196,7 +217,7 @@ impl CspConnection {
         assert!(self.is_service_connection());
 
         loop {
-            let packet = unsafe { csp_read(self.connection, PACKET_TIMEOUT_MS) };
+            let packet = unsafe { csp_read(self.connection, self.service_timeout_ms) };
             if packet.is_null() {
                 break;
             }
@@ -205,8 +226,12 @@ impl CspConnection {
         }
     }
 
-    pub fn iter_packets(&self) -> CspConnectionPacketIter {
-        CspConnectionPacketIter::new(self)
+    pub fn iter_packets(&self, timeout: Duration) -> CspConnectionPacketIter {
+        CspConnectionPacketIter::new(self, timeout)
+    }
+
+    pub fn into_reader(&self, timeout: Duration) -> CspConnectionPacketReader {
+        CspConnectionPacketReader::new(self, timeout)
     }
 }
 
@@ -217,16 +242,18 @@ impl Drop for CspConnection {
 }
 
 pub struct CspConnectionPacketIter<'a> {
-    connection: *mut csp_conn_t,
+    connection: &'a CspConnection, // Keeping the connection alive (making sure it's not dropped)
     prev_packet: Option<NonNull<csp_packet_t>>,
+    timeout_ms: u32,
     _marker: std::marker::PhantomData<&'a CspConnection>,
 }
 
 impl<'a> CspConnectionPacketIter<'a> {
-    pub fn new(connection: &'a CspConnection) -> Self {
+    pub fn new(connection: &'a CspConnection, timeout: Duration) -> Self {
         Self {
-            connection: connection.connection,
+            connection: connection,
             prev_packet: None,
+            timeout_ms: timeout.as_millis() as u32,
             _marker: std::marker::PhantomData,
         }
     }
@@ -240,7 +267,7 @@ impl<'a> Iterator for CspConnectionPacketIter<'a> {
             unsafe { csp_buffer_free(prev_packet.as_ptr() as *mut std::os::raw::c_void) };
         }
 
-        let packet = unsafe { csp_read(self.connection, PACKET_TIMEOUT_MS) };
+        let packet = unsafe { csp_read(self.connection.connection, self.timeout_ms) };
         self.prev_packet = NonNull::new(packet);
 
         if packet.is_null() {
@@ -256,10 +283,10 @@ impl<'a> Iterator for CspConnectionPacketIter<'a> {
 }
 
 pub struct CspConnectionPacketReader<'a> {
-    connection: *mut csp_conn_t,
+    connection: &'a CspConnection, // Keeping the connection alive (making sure it's not dropped)
+    timeout_ms: u32,
     packet: PacketReaderState,
     pos: usize,
-    _marker: std::marker::PhantomData<&'a CspConnection>,
 }
 
 enum PacketReaderState {
@@ -269,12 +296,12 @@ enum PacketReaderState {
 }
 
 impl<'a> CspConnectionPacketReader<'a> {
-    pub fn new(connection: &'a CspConnection) -> Self {
+    pub fn new(connection: &'a CspConnection, timeout: Duration) -> Self {
         Self {
-            connection: connection.connection,
+            connection: connection,
+            timeout_ms: timeout.as_millis() as u32,
             packet: PacketReaderState::NoPacket,
             pos: 0,
-            _marker: std::marker::PhantomData,
         }
     }
 }
@@ -282,11 +309,16 @@ impl<'a> CspConnectionPacketReader<'a> {
 impl<'a> std::io::Read for CspConnectionPacketReader<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
+        let mut remaining_buf = buf;
 
         loop {
+            if remaining_buf.len() == 0 {
+                return Ok(read);
+            }
+
             let next_packet = match &self.packet {
                 PacketReaderState::NoPacket => {
-                    let packet = unsafe { csp_read(self.connection, PACKET_TIMEOUT_MS) };
+                    let packet = unsafe { csp_read(self.connection.connection, self.timeout_ms) };
                     let packet = NonNull::new(packet);
 
                     match packet {
@@ -304,31 +336,25 @@ impl<'a> std::io::Read for CspConnectionPacketReader<'a> {
                 PacketReaderState::Finished => return Ok(read),
             };
 
-            let remaining_buf = unsafe {
+            let slice = unsafe {
                 let data = &(*next_packet.as_ptr()).__bindgen_anon_1.data as *const _ as *const u8;
                 let length = (*next_packet.as_ptr()).length;
-                let slice = std::slice::from_raw_parts(data, length as usize);
-
-                &slice[self.pos..]
+                std::slice::from_raw_parts(data, length as usize)
             };
+            let remaining_packet = &slice[self.pos..];
 
-            let to_write = std::cmp::min(buf.len() - read, remaining_buf.len());
+            let to_read = std::cmp::min(remaining_buf.len(), remaining_packet.len());
 
-            buf[read..read + to_write].copy_from_slice(&remaining_buf[..to_write]);
-            read += to_write;
+            remaining_buf[..to_read].copy_from_slice(&remaining_packet[..to_read]);
+            read += to_read;
+            remaining_buf = &mut remaining_buf[to_read..];
 
-            self.pos += to_write;
+            self.pos += to_read;
 
-            if self.pos >= remaining_buf.len() {
+            if self.pos >= slice.len() {
                 self.pos = 0;
                 self.packet = PacketReaderState::NoPacket;
             }
-
-            if read >= buf.len() {
-                break;
-            }
         }
-
-        Ok(read)
     }
 }

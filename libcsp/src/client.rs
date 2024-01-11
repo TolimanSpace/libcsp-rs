@@ -6,10 +6,7 @@ use libcsp_sys::{
     csp_prio_t_CSP_PRIO_NORM, csp_send, CSP_O_NONE,
 };
 
-use crate::{
-    errors::{csp_assert, result_from_i32},
-    CspError, CspErrorKind, LibCspConfig,
-};
+use crate::{errors::csp_assert, CspConnAddress, CspError, CspErrorKind, LibCspConfig};
 
 pub struct CspClient {
     max_buffer_size: u16,
@@ -51,16 +48,15 @@ impl CspClient {
 
     pub fn connect(
         &self,
-        address: u8,
+        address: CspConnAddress,
         priority: CspConnPriority,
-        port: u8,
         timeout: Duration,
     ) -> Result<CspClientConnection, CspError> {
         unsafe {
             let connection = csp_connect(
                 priority as u8,
-                address,
-                port,
+                address.address,
+                address.port,
                 timeout.as_millis() as u32,
                 CSP_O_NONE,
             );
@@ -120,8 +116,11 @@ impl CspClientConnection {
             (*packet).length = length as u16;
 
             let result = csp_send(self.connection, packet, timeout.as_millis() as u32);
-            if result < 0 {
-                csp_assert!(result, "Failed to send packet");
+            if result == 0 {
+                return Err(CspError {
+                    kind: CspErrorKind::FailedToSend,
+                    message: "Failed to send packet".to_string(),
+                });
             }
 
             Ok(())
@@ -184,6 +183,7 @@ impl std::io::Write for CspClientConnectionWriter {
                                 "Failed to get CSP buffer, no buffers left in the buffer pool.",
                             ));
                         }
+                        (*packet).length = self.connection.max_buffer_size;
                         NonNull::new_unchecked(packet)
                     };
                     self.packet = Some(packet);
@@ -224,10 +224,10 @@ impl std::io::Write for CspClientConnectionWriter {
                 packet.as_ptr(),
                 Duration::from_secs(1).as_millis() as u32,
             );
-            if let Err(err) = result_from_i32(result) {
+            if result == 0 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    Box::new(err),
+                    "Failed to send packet",
                 ));
             }
         }

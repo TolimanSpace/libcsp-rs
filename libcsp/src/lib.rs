@@ -1,11 +1,12 @@
-use std::{sync::Mutex, thread};
+use std::{sync::Mutex, thread, time::Duration};
 
+use interface::InterfaceBuilder;
 use libcsp_sys::*;
 use once_cell::sync::Lazy;
 use utils::to_owned_c_str_ptr;
 
-mod interface;
-pub use interface::*;
+pub mod interface;
+
 mod route;
 pub use route::*;
 mod socket;
@@ -121,11 +122,14 @@ impl LibCspInstance {
             csp_bind(socket_ptr, port.as_u8());
             csp_listen(socket_ptr, self.config.connection_backlog);
 
-            Ok(CspSocket::from_ptr(socket_ptr))
+            Ok(CspSocket::from_ptr(
+                socket_ptr,
+                self.config.service_timeout.as_millis() as u32,
+            ))
         }
     }
 
-    pub fn server_socket_builder(&self) -> Result<CspSocketBuilder<()>, CspError> {
+    pub fn server_sync_socket_builder(&self) -> Result<CspSocketBuilder<()>, CspError> {
         let socket = self.open_server_socket(CspPort::any_port())?;
         Ok(CspSocketBuilder::new(socket))
     }
@@ -215,6 +219,9 @@ pub struct LibCspConfig {
     pub buffer_data_size: u16,
     pub conn_dfl_so: u32,
     pub connection_backlog: usize,
+
+    /// Packet timeout on service messages that are handled internally
+    pub service_timeout: Duration,
 }
 
 impl LibCspConfig {
@@ -332,6 +339,7 @@ impl Default for LibCspConfig {
             buffer_data_size: 256,
             conn_dfl_so: CSP_O_NONE,
             connection_backlog: 64,
+            service_timeout: Duration::from_millis(100),
         }
     }
 }

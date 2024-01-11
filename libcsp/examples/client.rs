@@ -1,6 +1,6 @@
 use libcsp::{
-    CspConnPriority, CspDebugChannel, CspZmqInterface, LibCspBuilder, LibCspConfig, LibCspInstance,
-    Route,
+    interface::CspZmqInterface, CspConnAddress, CspConnPriority, CspDebugChannel, LibCspBuilder,
+    LibCspConfig, LibCspInstance, Route,
 };
 
 use std::{thread, time::Duration};
@@ -23,9 +23,8 @@ fn client_task(instance: &LibCspInstance) {
 
         let connection = client
             .connect(
-                address,
+                CspConnAddress::new(address, MY_SERVER_PORT as u8),
                 CspConnPriority::Normal,
-                MY_SERVER_PORT as u8,
                 Duration::from_secs(1),
             )
             .unwrap();
