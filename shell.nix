@@ -39,12 +39,12 @@ in
 let
   libcsp = stdenv.mkDerivation rec {
     name = "libcsp";
-    version = "1.6";
+    version = "1.6-patched";
     src = fetchFromGitHub {
-      owner = "libcsp";
+      owner = "TolimanSpace";
       repo = "libcsp";
-      rev = "v${version}";
-      sha256 = "sha256-3yJ+I5FROh7s/3hxJ2GGV/2gEJ+7M7wlN+O8Kmpg9no=";
+      rev = "140463b";
+      sha256 = "sha256-2WBy2UjR+ulNoKfsz7V/v8Bp8O4T72ZjpCP8f5NcC7M=";
     };
 
     buildInputs = [
