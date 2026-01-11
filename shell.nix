@@ -49,7 +49,7 @@ let
 
     buildInputs = [
       zeromq
-      python3
+      python310
       libyaml
       libsocketcan
     ];
@@ -89,17 +89,17 @@ let
       # Write a pkgconfig file so that the library can be detected in the environment
       mkdir -p $out/lib/pkgconfig
       cat > $out/lib/pkgconfig/libcsp.pc <<EOF
-      prefix=$out
-      exec_prefix=$out
-      libdir=$out/lib
-      includedir=$out/include
+prefix=$out
+exec_prefix=\''${prefix}
+libdir=\''${exec_prefix}/lib
+includedir=\''${prefix}/include
 
-      Name: libcsp
-      Description: CSP library
-      Version: ${version}
-      Libs: -L''${libdir} -lcsp
-      Cflags: -I''${includedir}
-      EOF
+Name: libcsp
+Description: CSP library
+Version: ${version}
+Libs: -L\''${libdir} -lcsp
+Cflags: -I\''${includedir}
+EOF
     '';
   };
 
@@ -111,11 +111,16 @@ mkShell {
   ];
 
   buildInputs = [
-    llvmPackages_16.clang
+    llvmPackages_18.clang
     zeromq
     rustup
     libcsp
   ];
 
-  LIBCLANG_PATH = "${llvmPackages_16.libclang.lib}/lib";
+  shellHook = ''
+    # Automatically set LD_LIBRARY_PATH so dynamic linking works out of the box
+    export LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcsp):$LD_LIBRARY_PATH"
+  '';
+
+  LIBCLANG_PATH = "${llvmPackages_18.libclang.lib}/lib";
 }

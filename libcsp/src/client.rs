@@ -107,7 +107,7 @@ impl CspClientConnection {
             }
 
             let data = &mut (*packet).__bindgen_anon_1.data as *mut _ as *mut u8;
-            let slice = std::slice::from_raw_parts_mut(data, (*packet).length as usize);
+            let slice = std::slice::from_raw_parts_mut(data, self.max_buffer_size as usize);
             let length = f(slice);
             assert!(
                 length <= self.max_buffer_size as usize,
