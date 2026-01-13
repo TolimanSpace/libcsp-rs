@@ -12,17 +12,33 @@ pub fn main() {
 
     println!("cargo:rerun-if-changed=wrapper.h");
 
-    let bindings = bindgen::Builder::default()
+    let libcsp = pkg_config::probe_library("libcsp").expect("Could not find libcsp via pkg-config");
+
+    // Print paths for debugging if the build fails
+    for path in &libcsp.include_paths {
+        println!("cargo:warning=Found libcsp include path: {}", path.display());
+    }
+
+    let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_args(&[
-            #[cfg(feature = "zmq")]
-            "-DCSP_RS_ZMQ",
-            #[cfg(feature = "socketcan")]
-            "-DCSP_RS_SOCKETCAN",
-            #[cfg(feature = "usart")]
-            "-DCSP_RS_USART",
-        ])
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        // This is important: tell bindgen to use the include paths from pkg-config
+        .clang_args(
+            libcsp.include_paths.iter().map(|path| format!("-I{}", path.to_string_lossy()))
+        );
+
+    // Add feature-based defines
+    if cfg!(feature = "zmq") { builder = builder.clang_arg("-DCSP_RS_ZMQ"); }
+    if cfg!(feature = "socketcan") { builder = builder.clang_arg("-DCSP_RS_SOCKETCAN"); }
+    if cfg!(feature = "usart") { builder = builder.clang_arg("-DCSP_RS_USART"); }
+
+    // Also include standard include paths from the system/nix environment
+    if let Ok(c_include_path) = std::env::var("C_INCLUDE_PATH") {
+        for path in std::env::split_paths(&c_include_path) {
+            builder = builder.clang_arg(format!("-I{}", path.to_string_lossy()));
+        }
+    }
+
+    let bindings = builder
         .generate()
         .expect("Unable to generate bindings");
 

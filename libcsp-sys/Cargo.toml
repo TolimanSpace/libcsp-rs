@@ -16,3 +16,4 @@ socketcan = []
 
 [build-dependencies]
 bindgen = "0.69.0"
+pkg-config = "0.3.27"

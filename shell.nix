@@ -43,13 +43,14 @@ let
     src = fetchFromGitHub {
       owner = "TolimanSpace";
       repo = "libcsp";
-      rev = "140463b";
-      sha256 = "sha256-2WBy2UjR+ulNoKfsz7V/v8Bp8O4T72ZjpCP8f5NcC7M=";
+      rev = "55c03fb";
+      sha256 = "sha256-wQdusM3o4/nk8hWALNXyEbGxEyEVBBVpFZOBknZ6p+E=
+";
     };
 
     buildInputs = [
       zeromq
-      python3
+      python311
       libyaml
       libsocketcan
     ];
@@ -89,17 +90,17 @@ let
       # Write a pkgconfig file so that the library can be detected in the environment
       mkdir -p $out/lib/pkgconfig
       cat > $out/lib/pkgconfig/libcsp.pc <<EOF
-      prefix=$out
-      exec_prefix=$out
-      libdir=$out/lib
-      includedir=$out/include
+prefix=$out
+exec_prefix=$out
+libdir=$out/lib
+includedir=$out/include
 
-      Name: libcsp
-      Description: CSP library
-      Version: ${version}
-      Libs: -L''${libdir} -lcsp
-      Cflags: -I''${includedir}
-      EOF
+Name: libcsp
+Description: CSP library
+Version: ${version}
+Libs: -L$out/lib -lcsp
+Cflags: -I$out/include
+EOF
     '';
   };
 
@@ -111,11 +112,17 @@ mkShell {
   ];
 
   buildInputs = [
-    llvmPackages_16.clang
+    llvmPackages_latest.clang
     zeromq
     rustup
     libcsp
   ];
 
-  LIBCLANG_PATH = "${llvmPackages_16.libclang.lib}/lib";
+  shellHook = ''
+    export PKG_CONFIG_PATH="${libcsp}/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="${libcsp}/lib:$LD_LIBRARY_PATH"
+  '';
+
+  # Change llvmPackages_16 to a supported version, e.g., 17 or 18
+  LIBCLANG_PATH = "${llvmPackages_latest.libclang.lib}/lib";
 }
