@@ -1,4 +1,6 @@
 #include <csp/csp.h>
+#include <csp/csp_types.h>
+#include <csp/csp_id.h>
 #include <csp/csp_rtable.h>
 
 #ifdef CSP_RS_USART

@@ -39,12 +39,12 @@ in
 let
   libcsp = stdenv.mkDerivation rec {
     name = "libcsp";
-    version = "1.6-patched";
+    version = "2.0-patched";
     src = fetchFromGitHub {
       owner = "TolimanSpace";
       repo = "libcsp";
-      rev = "55c03fb";
-      sha256 = "sha256-wQdusM3o4/nk8hWALNXyEbGxEyEVBBVpFZOBknZ6p+E=
+      rev = "236f869";
+      sha256 = "sha256-rnmIDd9Km1ZMzdrsKVnwX5qrlrOfme+1la3hX1flx3k=
 ";
     };
 
@@ -79,13 +79,18 @@ let
 
       # Copy the library files
       mkdir -p $out/lib
-      cp build/libcsp.so $out/lib
-      cp build/libcsp.a $out/lib
+      cp build/libcsp.so $out/lib/
+      cp build/libcsp.a $out/lib/
 
       # Copy the header files
-      mkdir -p $out/include/csp
-      cp -r include/csp/* $out/include/csp
-      cp -r build/include/csp/* $out/include/csp
+      mkdir -p $out/include
+      cp -r include/csp $out/include/
+      if [ -d build/include ]; then
+        cp -r build/include/. $out/include/
+      fi
+      if [ -f build/csp_autoconfig.h ]; then
+        cp build/csp_autoconfig.h $out/include/
+      fi
 
       # Write a pkgconfig file so that the library can be detected in the environment
       mkdir -p $out/lib/pkgconfig
