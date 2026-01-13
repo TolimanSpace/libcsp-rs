@@ -38,6 +38,8 @@ impl CspPort {
     /// # Examples
     ///
     /// ```
+    /// use libcsp::CspPort;
+    ///
     /// let port = CspPort::port(10);
     /// assert_eq!(port.as_u8(), 10);
     /// ```
@@ -52,6 +54,8 @@ impl CspPort {
     /// # Examples
     ///
     /// ```
+    /// use libcsp::CspPort;
+    ///
     /// let port = CspPort::any_port();
     /// assert_eq!(port.as_u8(), 255);
     /// ```
@@ -64,6 +68,8 @@ impl CspPort {
     /// # Examples
     ///
     /// ```
+    /// use libcsp::CspPort;
+    ///
     /// let port = CspPort::port(10);
     /// assert_eq!(port.as_u8(), 10);
     /// ```
