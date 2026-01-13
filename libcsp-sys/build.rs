@@ -2,13 +2,22 @@ use std::env;
 use std::path::PathBuf;
 
 pub fn main() {
-    println!("cargo:rustc-link-lib=dylib={}", "csp");
-    println!("cargo:rustc-link-lib=dylib={}", "zmq");
+    let libcsp = pkg_config::probe_library("libcsp").expect("libcsp not found via pkg-config");
+    let zmq = pkg_config::probe_library("libzmq").expect("libzmq not found via pkg-config");
 
-    // Get LIBCSP_DIR from environment variable, or use default
-    // let lib_dir = env::var("LIBCSP_DIR").unwrap_or("/usr/local".to_string());
+    for path in libcsp.link_paths {
+        println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
+    }
+    for lib in libcsp.libs {
+        println!("cargo:rustc-link-lib=dylib={}", lib);
+    }
 
-    // println!("cargo:rustc-link-search=native={lib_dir}/lib");
+    for path in zmq.link_paths {
+        println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
+    }
+    for lib in zmq.libs {
+        println!("cargo:rustc-link-lib=dylib={}", lib);
+    }
 
     println!("cargo:rerun-if-changed=wrapper.h");
 

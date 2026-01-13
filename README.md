@@ -12,6 +12,24 @@ For reference, use `shell.nix`.
 
 In the future, I may add static linking to avoid the need for having the dynamic library installed in the system.
 
+## Testing
+
+### Standard Tests
+
+To run the standard tests, use the following command inside the `nix-shell`:
+
+```bash
+cargo test
+```
+
+### Interoperability Tests
+
+The interoperability tests ensure that the Rust wrapper works correctly with the C implementation. These tests are marked as `#[ignore]` by default and must be run inside the `nix-shell`:
+
+```bash
+cargo test -p libcsp --test interop -- --ignored --nocapture
+```
+
 ## Compatibility
 
 This crate uses LibCSP version `v1.6`. As of writing, `v1.6` is 4 years old, while the libcsp repository is still active working on the unfinished `v2.0`.
