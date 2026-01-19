@@ -30,7 +30,7 @@ fn client_task(instance: &LibCspInstance) {
             .unwrap();
 
         connection
-            .send_packet(Duration::from_secs(1), b"Hello world from Rust")
+            .send_packet(b"Hello world from Rust")
             .unwrap();
 
         println!("Packet sent");
@@ -38,7 +38,7 @@ fn client_task(instance: &LibCspInstance) {
 }
 
 fn main() {
-    let address: u8 = 1;
+    let address: u16 = 1;
 
     let zmq_device = "localhost";
 

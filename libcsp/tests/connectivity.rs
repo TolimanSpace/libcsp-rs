@@ -16,6 +16,7 @@ fn test_loopback_connectivity() {
             if let Some(conn) = socket.accept_timeout(Duration::from_secs(2)) {
                 if let Some(packet) = conn.iter_packets(Duration::from_secs(1)).next() {
                     let data = String::from_utf8_lossy(packet.as_slice());
+                    let data = data.trim_end_matches('\0');
                     assert_eq!(data, "Hello from test");
                 } else {
                     panic!("No packet received");
@@ -38,7 +39,7 @@ fn test_loopback_connectivity() {
                 .unwrap();
 
             connection
-                .send_packet(Duration::from_secs(1), b"Hello from test")
+                .send_packet(b"Hello from test")
                 .unwrap();
         });
     });

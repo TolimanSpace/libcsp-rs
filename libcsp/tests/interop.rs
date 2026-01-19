@@ -2,7 +2,7 @@ use std::process::{Command, Child};
 use std::thread;
 use std::time::Duration;
 use libcsp::{
-    CspConnAddress, CspConnPriority, LibCspBuilder, LibCspConfig, CspPort, interface::CspZmqInterface, Route
+    CspConnAddress, CspConnPriority, LibCspBuilder, LibCspConfig, interface::CspZmqInterface, Route
 };
 
 struct ChildGuard(Child);
@@ -24,7 +24,7 @@ fn test_c_server_interop() {
 
     // 2. Compile C server
     Command::new("gcc")
-        .args(["tests/c_src/simple_server.c", "-o", "../target/c_server", "-lcsp", "-lzmq"])
+        .args(["tests/c_src/simple_server.c", "-o", "../target/c_server", "-lcsp", "-lzmq", "-lpthread"])
         .status()
         .expect("Failed to compile C server");
 
@@ -66,7 +66,7 @@ fn test_c_server_interop() {
         .expect("Failed to connect to C server");
 
     connection
-        .send_packet(Duration::from_secs(1), b"Hello from Rust")
+        .send_packet(b"Hello from Rust")
         .expect("Failed to send packet");
 
     // 6. Wait for C process to finish

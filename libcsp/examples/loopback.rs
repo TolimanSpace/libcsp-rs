@@ -23,7 +23,7 @@ fn server_task(instance: &LibCspInstance) {
 
 // Client task sending requests to server task
 fn client_task(instance: &LibCspInstance) {
-    let address = 1;
+    let address = 1u16;
     let client = instance.client();
 
     loop {
@@ -43,7 +43,7 @@ fn client_task(instance: &LibCspInstance) {
             .unwrap();
 
         connection
-            .send_packet(Duration::from_secs(1), b"Hello world from Rust")
+            .send_packet(b"Hello world from Rust")
             .unwrap();
 
         println!("Packet sent");
@@ -51,7 +51,7 @@ fn client_task(instance: &LibCspInstance) {
 }
 
 fn main() {
-    let address: u8 = 1; // Choose sensible defaults here
+    let address: u16 = 1; // Choose sensible defaults here
 
     let csp_instance = LibCspBuilder::new(LibCspConfig::new(address))
         .debug_channels(CspDebugChannel::up_to_info())

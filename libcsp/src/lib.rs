@@ -7,8 +7,14 @@ use utils::to_owned_c_str_ptr;
 
 pub mod interface;
 
+mod id;
+pub use id::*;
+
 mod route;
 pub use route::*;
+mod connection;
+pub use connection::*;
+
 mod socket;
 pub use socket::*;
 mod port;
@@ -63,16 +69,18 @@ impl<'a> LibCspBuilder<'a> {
         Box::leak(Box::new(guard));
 
         unsafe {
-            // Set the debug channels before initializing the config
-            for channel in self.debug_channels {
-                csp_debug_set_level(*channel as u32, true);
-            }
+            // Initialize buffers
+            csp_buffer_init();
         }
 
         unsafe {
             // Set the config for the global instance.
             let config = self.config.to_csp_conf_t();
-            csp_init(&config);
+            csp_conf = config;
+            csp_init();
+            
+            // Add loopback route
+            csp_rtable_set(self.config.address, -1, std::ptr::addr_of_mut!(csp_if_lo), CSP_NO_VIA_ADDRESS as u16);
         }
 
         unsafe {
@@ -81,7 +89,7 @@ impl<'a> LibCspBuilder<'a> {
             // csp_route_start_task(500, 0);
 
             thread::spawn(|| loop {
-                csp_route_work(1000);
+                csp_route_work();
             });
         }
 
@@ -118,7 +126,9 @@ impl LibCspInstance {
 
     pub fn open_server_socket(&self, port: CspPort) -> Result<CspSocket, CspError> {
         unsafe {
-            let socket_ptr = csp_socket(CSP_SO_NONE);
+            // In LibCSP v2.0, we must provide the memory for the socket.
+            let socket_ptr = Box::into_raw(Box::new(std::mem::zeroed::<csp_socket_t>()));
+            
             csp_bind(socket_ptr, port.as_u8());
             csp_listen(socket_ptr, self.config.connection_backlog);
 
@@ -129,7 +139,7 @@ impl LibCspInstance {
         }
     }
 
-    pub fn server_sync_socket_builder(&self) -> Result<CspSocketBuilder<()>, CspError> {
+    pub fn server_sync_socket_builder(&self) -> Result<CspSocketBuilder<'_, ()>, CspError> {
         let socket = self.open_server_socket(CspPort::any_port())?;
         Ok(CspSocketBuilder::new(socket))
     }
@@ -206,17 +216,11 @@ impl CspDebugChannel {
 }
 
 pub struct LibCspConfig {
-    pub address: u8,
+    pub address: u16,
     pub hostname: String,
     pub model: String,
     pub revision: String,
-    pub conn_max: u8,
-    pub conn_queue_length: u8,
-    pub fifo_length: u8,
-    pub port_max_bind: u8,
-    pub rdp_max_window: u8,
-    pub buffers: u16,
-    pub buffer_data_size: u16,
+    pub dedup: u8,
     pub conn_dfl_so: u32,
     pub connection_backlog: usize,
 
@@ -225,7 +229,7 @@ pub struct LibCspConfig {
 }
 
 impl LibCspConfig {
-    pub fn new(address: u8) -> Self {
+    pub fn new(address: u16) -> Self {
         Self {
             address,
             ..Default::default()
@@ -248,53 +252,8 @@ impl LibCspConfig {
     }
 
     /// Refer to the LibCSP documentation
-    pub fn conn_max(self, conn_max: u8) -> Self {
-        Self { conn_max, ..self }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn conn_queue_length(self, conn_queue_length: u8) -> Self {
-        Self {
-            conn_queue_length,
-            ..self
-        }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn fifo_length(self, fifo_length: u8) -> Self {
-        Self {
-            fifo_length,
-            ..self
-        }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn port_max_bind(self, port_max_bind: u8) -> Self {
-        Self {
-            port_max_bind,
-            ..self
-        }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn rdp_max_window(self, rdp_max_window: u8) -> Self {
-        Self {
-            rdp_max_window,
-            ..self
-        }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn buffers(self, buffers: u16) -> Self {
-        Self { buffers, ..self }
-    }
-
-    /// Refer to the LibCSP documentation
-    pub fn buffer_data_size(self, buffer_data_size: u16) -> Self {
-        Self {
-            buffer_data_size,
-            ..self
-        }
+    pub fn dedup(self, dedup: u8) -> Self {
+        Self { dedup, ..self }
     }
 
     /// Refer to the LibCSP documentation
@@ -307,18 +266,13 @@ impl LibCspConfig {
 
     fn to_csp_conf_t(&self) -> csp_conf_t {
         csp_conf_t {
+            version: 2,
             address: self.address,
             hostname: to_owned_c_str_ptr(&self.hostname),
             model: to_owned_c_str_ptr(&self.model),
             revision: to_owned_c_str_ptr(&self.revision),
-            conn_max: self.conn_max,
-            conn_queue_length: self.conn_queue_length,
-            fifo_length: self.fifo_length,
-            port_max_bind: self.port_max_bind,
-            rdp_max_window: self.rdp_max_window,
-            buffers: self.buffers,
-            buffer_data_size: self.buffer_data_size,
             conn_dfl_so: self.conn_dfl_so,
+            dedup: self.dedup,
         }
     }
 }
@@ -330,13 +284,7 @@ impl Default for LibCspConfig {
             hostname: "{hostname unspecified}".to_string(),
             model: "{model unspecified}".to_string(),
             revision: "{resvision unspecified}".to_string(),
-            conn_max: 64,
-            conn_queue_length: 64,
-            fifo_length: 25,
-            port_max_bind: 24,
-            rdp_max_window: 20,
-            buffers: 256,
-            buffer_data_size: 256,
+            dedup: 1,
             conn_dfl_so: CSP_O_NONE,
             connection_backlog: 64,
             service_timeout: Duration::from_millis(100),

@@ -2,6 +2,7 @@
 #include <csp/csp_types.h>
 #include <csp/csp_id.h>
 #include <csp/csp_rtable.h>
+#include <csp/interfaces/csp_if_lo.h>
 
 #ifdef CSP_RS_USART
 #include <csp/drivers/usart.h>

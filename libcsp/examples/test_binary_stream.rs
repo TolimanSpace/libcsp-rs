@@ -93,11 +93,7 @@ fn main() {
     let address: u8 = 1; // Choose sensible defaults here
 
     let csp_instance = LibCspBuilder::new(
-        LibCspConfig::new(address)
-            .buffer_data_size(256)
-            .fifo_length(255)
-            .buffers(4096)
-            .conn_queue_length(255),
+        LibCspConfig::new(address as u16),
     )
     .debug_channels(CspDebugChannel::up_to_info())
     .build();

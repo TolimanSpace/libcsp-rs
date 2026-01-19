@@ -6,7 +6,7 @@ use libcsp_sys::{
 use crate::{csp_assert, utils::to_owned_c_str_ptr, CspError};
 
 pub trait InterfaceBuilder {
-    fn build(self, address: u8) -> Result<*mut csp_iface_t, CspError>;
+    fn build(self, address: u16) -> Result<*mut csp_iface_t, CspError>;
 }
 
 pub enum CspZmqInterface<'a> {
@@ -21,7 +21,8 @@ pub enum CspZmqInterface<'a> {
     },
     WithNameEndpointsFilter {
         ifname: &'a str,
-        rx_filter: &'a [u8],
+        addr: u16,
+        rx_filter: &'a [u16],
         publish_endpoint: &'a str,
         subscribe_endpoint: &'a str,
         zmq_flags: u32,
@@ -35,7 +36,7 @@ impl<'a> CspZmqInterface<'a> {
 }
 
 impl InterfaceBuilder for CspZmqInterface<'_> {
-    fn build(self, address: u8) -> Result<*mut csp_iface_t, CspError> {
+    fn build(self, address: u16) -> Result<*mut csp_iface_t, CspError> {
         let mut return_interface = std::ptr::null_mut();
         unsafe {
             let result = match self {
@@ -58,12 +59,14 @@ impl InterfaceBuilder for CspZmqInterface<'_> {
                 ),
                 CspZmqInterface::WithNameEndpointsFilter {
                     ifname,
+                    addr,
                     rx_filter,
                     publish_endpoint,
                     subscribe_endpoint,
                     zmq_flags,
                 } => csp_zmqhub_init_w_name_endpoints_rxfilter(
                     to_owned_c_str_ptr(ifname),
+                    addr,
                     rx_filter.as_ptr(),
                     rx_filter.len() as u32,
                     to_owned_c_str_ptr(publish_endpoint),

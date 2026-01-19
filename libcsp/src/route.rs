@@ -3,13 +3,13 @@ use libcsp_sys::CSP_NO_VIA_ADDRESS;
 /// Represents a route for the CSP protocol network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Route {
-    pub address: u8,
-    pub netmask: u8,
-    pub via: u8,
+    pub address: u16,
+    pub netmask: i32,
+    pub via: u16,
 }
 
 impl Route {
-    /// Creates a new Route instance with the specified address, a netmask of 255 (all bits),
+    /// Creates a new Route instance with the specified address, a netmask of -1 (all bits),
     /// and a via address of CSP_NO_VIA_ADDRESS.
     ///
     /// # Arguments
@@ -19,15 +19,15 @@ impl Route {
     /// # Returns
     ///
     /// A new Route instance.
-    pub fn new(address: u8) -> Self {
+    pub fn new(address: u16) -> Self {
         Self {
             address,
-            netmask: 255, // Assume maximal bits
-            via: CSP_NO_VIA_ADDRESS as u8,
+            netmask: -1, // Assume maximal bits
+            via: CSP_NO_VIA_ADDRESS as u16,
         }
     }
 
-    /// Sets the netmask number for the Route. The netmask is an arbitrary bit mask, with 0xFF being all bits.
+    /// Sets the netmask number for the Route.
     ///
     /// # Arguments
     ///
@@ -36,19 +36,12 @@ impl Route {
     /// # Returns
     ///
     /// The modified Route instance.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the address is not valid for the netmask.
-    pub fn netmask(mut self, netmask: u8) -> Self {
-        assert!(netmask <= 8);
-        assert!(self.address & (!netmask) == 0);
-
+    pub fn netmask(mut self, netmask: i32) -> Self {
         self.netmask = netmask;
         self
     }
 
-    /// Sets the netmask bit number for the Route. The bit number is akin to CIDR notation, with 8 being all bits.
+    /// Sets the netmask bit number for the Route.
     ///
     /// # Arguments
     ///
@@ -57,18 +50,8 @@ impl Route {
     /// # Returns
     ///
     /// The modified Route instance.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the netmask bit number is greater than 8 or if the address is not valid for the netmask.
     pub fn netmask_bits(mut self, netmask_bits: u8) -> Self {
-        let num_bits = 8 - netmask_bits;
-        let netmask = 0xFF << num_bits;
-
-        assert!(netmask_bits <= 8);
-        assert!(self.address & netmask == 0);
-
-        self.netmask = netmask;
+        self.netmask = netmask_bits as i32;
         self
     }
 
@@ -81,13 +64,7 @@ impl Route {
     /// # Returns
     ///
     /// The modified Route instance.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the via address is equal to CSP_NO_VIA_ADDRESS.
-    pub fn via(mut self, via: u8) -> Self {
-        assert!(via != CSP_NO_VIA_ADDRESS as u8);
-
+    pub fn via(mut self, via: u16) -> Self {
         self.via = via;
         self
     }

@@ -39,7 +39,7 @@ unsafe fn server_task() {
                 let dport = csp_conn_dport(conn);
 
                 if dport == MY_SERVER_PORT as i32 {
-                    let data = &(*packet).__bindgen_anon_1.data as *const _ as *const u8;
+                    let data = &(*packet).__bindgen_anon_2.data as *const _ as *const u8;
                     let length = (*packet).length;
                     let slice = std::slice::from_raw_parts(data, length as usize);
 
@@ -52,7 +52,7 @@ unsafe fn server_task() {
                     unsafe { csp_buffer_free(packet as *mut std::os::raw::c_void) };
                 } else {
                     // Call the default CSP service handler
-                    unsafe { csp_service_handler(conn, packet) };
+                    unsafe { csp_service_handler(packet) };
                 }
             }
 
@@ -74,19 +74,12 @@ fn main() {
     let zmq_device = std::ffi::CString::new(zmq_device).unwrap();
 
     unsafe {
-        for i in 0..3 {
-            csp_debug_set_level(i, true);
-        }
+        let mut conf = csp_conf_get_defaults();
+        conf.address = address as u16;
+        csp_conf = conf;
+        csp_init();
 
-        let mut csp_conf = csp_conf_get_defaults();
-        csp_conf.address = address;
-        let error = csp_init(&csp_conf);
-        if error != 0 {
-            eprintln!("Failed to initialize CSP, error: {}", error);
-            std::process::exit(1);
-        }
-
-        csp_route_start_task(500, 0);
+        csp_buffer_init();
 
         let mut default_iface = std::ptr::null_mut();
 
@@ -101,7 +94,7 @@ fn main() {
             std::process::exit(1);
         }
 
-        let error = csp_rtable_set(0, 0, default_iface, libcsp_sys::CSP_NO_VIA_ADDRESS as u8);
+        let error = csp_rtable_set(0, 0, default_iface, libcsp_sys::CSP_NO_VIA_ADDRESS as u16);
         if error != 0 {
             eprintln!("Failed to add route, error: {}", error);
             std::process::exit(1);

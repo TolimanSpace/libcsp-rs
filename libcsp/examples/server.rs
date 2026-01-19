@@ -22,7 +22,7 @@ fn server_task(instance: &LibCspInstance) {
 }
 
 fn main() {
-    let address: u8 = 27;
+    let address: u16 = 27;
 
     let zmq_device = "localhost";
 

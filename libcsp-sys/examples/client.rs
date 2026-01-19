@@ -41,11 +41,11 @@ unsafe fn client_task() {
 
         ptr::copy_nonoverlapping(
             msg.as_ptr(),
-            &(*packet).__bindgen_anon_1.data as *const _ as *mut u8,
+            &mut (*packet).__bindgen_anon_2.data as *mut _ as *mut u8,
             msg.len(),
         );
         (*packet).length = msg.len() as u16;
-        csp_send(conn, packet, 1000);
+        csp_send(conn, packet);
         csp_close(conn);
     }
 }
@@ -56,19 +56,12 @@ fn main() {
     let zmq_device = std::ffi::CString::new(zmq_device).unwrap();
 
     unsafe {
-        for i in 0..3 {
-            csp_debug_set_level(i, true);
-        }
+        let mut conf = csp_conf_get_defaults();
+        conf.address = address as u16;
+        csp_conf = conf;
+        csp_init();
 
-        let mut csp_conf = csp_conf_get_defaults();
-        csp_conf.address = address;
-        let error = csp_init(&csp_conf);
-        if error != 0 {
-            eprintln!("Failed to initialize CSP, error: {}", error);
-            std::process::exit(1);
-        }
-
-        csp_route_start_task(500, 0);
+        csp_buffer_init();
 
         let mut default_iface = std::ptr::null_mut();
 
@@ -88,7 +81,7 @@ fn main() {
             std::process::exit(1);
         }
 
-        let error = csp_rtable_set(0, 0, default_iface, libcsp_sys::CSP_NO_VIA_ADDRESS as u8);
+        let error = csp_rtable_set(0, 0, default_iface, libcsp_sys::CSP_NO_VIA_ADDRESS as u16);
         if error != 0 {
             eprintln!("Failed to add route, error: {}", error);
             std::process::exit(1);
