@@ -6,11 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["zmq"]
+default = ["std", "alloc", "zmq"]
+std = []
+alloc = []
 
-zmq = []
-usart = []
-socketcan = []
+zmq = ["std"]
+usart = ["std"]
+socketcan = ["std"]
 
 [dependencies]
 
