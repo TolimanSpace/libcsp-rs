@@ -3,25 +3,25 @@ use std::path::PathBuf;
 
 pub fn main() {
     let libcsp = pkg_config::probe_library("libcsp").expect("libcsp not found via pkg-config");
-    let zmq = pkg_config::probe_library("libzmq").expect("libzmq not found via pkg-config");
 
-    for path in libcsp.link_paths {
+    for path in &libcsp.link_paths {
         println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
     }
-    for lib in libcsp.libs {
+    for lib in &libcsp.libs {
         println!("cargo:rustc-link-lib=dylib={}", lib);
     }
 
-    for path in zmq.link_paths {
-        println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
-    }
-    for lib in zmq.libs {
-        println!("cargo:rustc-link-lib=dylib={}", lib);
+    if cfg!(feature = "zmq") {
+        let zmq = pkg_config::probe_library("libzmq").expect("libzmq not found via pkg-config");
+        for path in &zmq.link_paths {
+            println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
+        }
+        for lib in &zmq.libs {
+            println!("cargo:rustc-link-lib=dylib={}", lib);
+        }
     }
 
     println!("cargo:rerun-if-changed=wrapper.h");
-
-    let libcsp = pkg_config::probe_library("libcsp").expect("Could not find libcsp via pkg-config");
 
     // Print paths for debugging if the build fails
     for path in &libcsp.include_paths {
@@ -30,6 +30,7 @@ pub fn main() {
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
+        .use_core()
         // This is important: tell bindgen to use the include paths from pkg-config
         .clang_args(
             libcsp.include_paths.iter().map(|path| format!("-I{}", path.to_string_lossy()))

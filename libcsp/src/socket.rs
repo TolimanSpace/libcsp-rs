@@ -1,4 +1,4 @@
-use std::{ptr::NonNull, time::Duration};
+use core::{ptr::NonNull, time::Duration};
 
 use libcsp_sys::{
     csp_accept, csp_socket_close, csp_socket_t,
@@ -77,7 +77,10 @@ impl Drop for CspSocket {
         unsafe {
             csp_socket_close(self.socket.as_ptr());
             // The memory was allocated with Box::into_raw in lib.rs
-            let _ = Box::from_raw(self.socket.as_ptr());
+            #[cfg(feature = "alloc")]
+            {
+                let _ = alloc::boxed::Box::from_raw(self.socket.as_ptr());
+            }
         }
     }
 }
@@ -90,7 +93,7 @@ struct CspPortFn<'a, F: 'a + FnMut(CspConnection), Next: CspPortHandler> {
     port: u8,
     f: F,
     inner: Next,
-    _marker: std::marker::PhantomData<&'a ()>,
+    _marker: core::marker::PhantomData<&'a ()>,
 }
 
 impl CspPortHandler for () {
@@ -113,7 +116,7 @@ impl<'a, F: 'a + FnMut(CspConnection), Next: CspPortHandler> CspPortHandler
 pub struct CspSocketBuilder<'a, Handlers: CspPortHandler> {
     socket: CspSocket,
     handlers: Handlers,
-    _marker: std::marker::PhantomData<&'a ()>,
+    _marker: core::marker::PhantomData<&'a ()>,
 }
 
 impl CspSocketBuilder<'static, ()> {
@@ -121,7 +124,7 @@ impl CspSocketBuilder<'static, ()> {
         Self {
             socket,
             handlers: (),
-            _marker: std::marker::PhantomData,
+            _marker: core::marker::PhantomData,
         }
     }
 }
@@ -141,9 +144,9 @@ impl<'a, Handlers: 'a + CspPortHandler> CspSocketBuilder<'a, Handlers> {
                 port,
                 f,
                 inner: self.handlers,
-                _marker: std::marker::PhantomData,
+                _marker: core::marker::PhantomData,
             },
-            _marker: std::marker::PhantomData,
+            _marker: core::marker::PhantomData,
         }
     }
 

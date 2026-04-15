@@ -32,7 +32,8 @@ cargo test -p libcsp --test interop -- --ignored --nocapture
 
 ## Compatibility
 
-This crate uses LibCSP version `v1.6`. As of writing, `v1.6` is 4 years old, while the libcsp repository is still active working on the unfinished `v2.0`.
+This crate uses LibCSP version `v1.6`. As of writing, `v1.6` is 4 years old, while the libcsp repository is still active working on the unfinished `v2.0`. 
+Plans for migration to `v2.0` and `no-std` support are ongoing. See `docs/` for details.
 
 ## Caveats
 

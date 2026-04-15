@@ -1,3 +1,8 @@
+use core::fmt;
+
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+
 #[repr(i32)]
 #[derive(Debug)]
 pub enum CspErrorKind {
@@ -22,10 +27,11 @@ pub enum CspErrorKind {
     FailedToSend = 3,
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for CspErrorKind {}
 
-impl std::fmt::Display for CspErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for CspErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             CspErrorKind::Nomem => write!(f, "No memory available"),
             CspErrorKind::Inval => write!(f, "Invalid argument"),
@@ -76,25 +82,31 @@ pub fn result_from_i32(err_code: i32) -> Result<(), CspErrorKind> {
 #[derive(Debug)]
 pub struct CspError {
     pub kind: CspErrorKind,
+    #[cfg(feature = "alloc")]
     pub message: String,
+    #[cfg(not(feature = "alloc"))]
+    pub message: &'static str,
 }
 
-impl std::fmt::Display for CspError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for CspError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CSP error: {} ({})", self.message, self.kind)
     }
 }
 
-impl Error for CspError {}
+#[cfg(feature = "std")]
+impl std::error::Error for CspError {}
 
 macro_rules! csp_assert {
     ($err_code:expr, $msg:expr) => {
         crate::errors::result_from_i32($err_code).map_err(|kind| crate::errors::CspError {
             kind,
-            message: ToString::to_string($msg),
+            #[cfg(feature = "alloc")]
+            message: alloc::string::ToString::to_string($msg),
+            #[cfg(not(feature = "alloc"))]
+            message: $msg,
         })?;
     };
 }
-use std::error::Error;
 
 pub(crate) use csp_assert;

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use core::time::Duration;
 
 use libcsp_sys::{
     csp_connect, csp_ping, CSP_O_NONE,
@@ -12,7 +12,7 @@ use crate::{
 pub struct CspClient {}
 
 impl CspClient {
-    pub(crate) fn new(_conf: &LibCspConfig) -> Self {
+    pub fn new(_conf: &LibCspConfig) -> Self {
         Self {}
     }
 
@@ -71,7 +71,10 @@ impl CspClient {
             if connection.is_null() {
                 return Err(CspError {
                     kind: CspErrorKind::Unknown(0),
-                    message: "Failed to connect".to_string(),
+                    #[cfg(feature = "alloc")]
+                    message: alloc::string::ToString::to_string("Failed to connect"),
+                    #[cfg(not(feature = "alloc"))]
+                    message: "Failed to connect",
                 });
             }
 

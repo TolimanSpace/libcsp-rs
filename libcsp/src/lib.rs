@@ -1,8 +1,30 @@
-use std::{sync::Mutex, thread, time::Duration};
+#![no_std]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+use std::sync::Mutex;
+#[cfg(not(feature = "std"))]
+use spin::Mutex;
+
+#[cfg(feature = "std")]
+use std::thread;
+
+use core::time::Duration;
 
 use interface::InterfaceBuilder;
 use libcsp_sys::*;
+
+#[cfg(feature = "std")]
 use once_cell::sync::Lazy;
+#[cfg(not(feature = "std"))]
+use spin::Lazy;
+
+#[cfg(feature = "alloc")]
 use utils::to_owned_c_str_ptr;
 
 pub mod interface;
@@ -59,20 +81,26 @@ impl<'a> LibCspBuilder<'a> {
     pub fn build(self) -> LibCspInstance {
         // This line can only be run once throughout the lifetime of the process.
         // The global instance lock is aquired within and never released.
-        let guard_result = GLOBAL_LIBCSP_INSTANCE_LOCK.try_lock();
-        let guard = match guard_result {
-            Ok(guard) => guard,
-            Err(_) => panic!("Only one LibCSP instance can be created per process"),
-        };
+        let guard = GLOBAL_LIBCSP_INSTANCE_LOCK.try_lock()
+            .expect("Only one LibCSP instance can be created per process");
 
         // Leak the guard, so it's never dropped.
-        Box::leak(Box::new(guard));
+        #[cfg(feature = "alloc")]
+        {
+            use alloc::boxed::Box;
+            Box::leak(Box::new(guard));
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            core::mem::forget(guard);
+        }
 
         unsafe {
             // Initialize buffers
             csp_buffer_init();
         }
 
+        // TODO: Update this to use libcsp-rs
         unsafe {
             // Set the config for the global instance.
             let config = self.config.to_csp_conf_t();
@@ -80,9 +108,10 @@ impl<'a> LibCspBuilder<'a> {
             csp_init();
             
             // Add loopback route
-            csp_rtable_set(self.config.address, -1, std::ptr::addr_of_mut!(csp_if_lo), CSP_NO_VIA_ADDRESS as u16);
+            csp_rtable_set(self.config.address, -1, core::ptr::addr_of_mut!(csp_if_lo), CSP_NO_VIA_ADDRESS as u16);
         }
 
+        #[cfg(feature = "std")]
         unsafe {
             // Initialize the background router task
             // TODO: Which parameters are actually needed here?
@@ -124,10 +153,13 @@ impl LibCspInstance {
         Ok(())
     }
 
+    #[cfg(feature = "alloc")]
     pub fn open_server_socket(&self, port: CspPort) -> Result<CspSocket, CspError> {
+        //TODO: remove unsafe if possible
         unsafe {
+            use alloc::boxed::Box;
             // In LibCSP v2.0, we must provide the memory for the socket.
-            let socket_ptr = Box::into_raw(Box::new(std::mem::zeroed::<csp_socket_t>()));
+            let socket_ptr = Box::into_raw(Box::new(core::mem::zeroed::<csp_socket_t>()));
             
             csp_bind(socket_ptr, port.as_u8());
             csp_listen(socket_ptr, self.config.connection_backlog);
@@ -139,6 +171,7 @@ impl LibCspInstance {
         }
     }
 
+    #[cfg(feature = "alloc")]
     pub fn server_sync_socket_builder(&self) -> Result<CspSocketBuilder<'_, ()>, CspError> {
         let socket = self.open_server_socket(CspPort::any_port())?;
         Ok(CspSocketBuilder::new(socket))
@@ -146,6 +179,12 @@ impl LibCspInstance {
 
     pub fn client(&self) -> CspClient {
         CspClient::new(&self.config)
+    }
+
+    pub fn route_work(&self) {
+        unsafe {
+            csp_route_work();
+        }
     }
 
     pub fn print_conn_table(&self) {
@@ -217,9 +256,18 @@ impl CspDebugChannel {
 
 pub struct LibCspConfig {
     pub address: u16,
-    pub hostname: String,
-    pub model: String,
-    pub revision: String,
+    #[cfg(feature = "alloc")]
+    pub hostname: alloc::string::String,
+    #[cfg(not(feature = "alloc"))]
+    pub hostname: &'static str,
+    #[cfg(feature = "alloc")]
+    pub model: alloc::string::String,
+    #[cfg(not(feature = "alloc"))]
+    pub model: &'static str,
+    #[cfg(feature = "alloc")]
+    pub revision: alloc::string::String,
+    #[cfg(not(feature = "alloc"))]
+    pub revision: &'static str,
     pub dedup: u8,
     pub conn_dfl_so: u32,
     pub connection_backlog: usize,
@@ -237,16 +285,33 @@ impl LibCspConfig {
     }
 
     /// Refer to the LibCSP documentation
+    #[cfg(feature = "alloc")]
     pub fn details(
         self,
-        hostname: impl Into<String>,
-        model: impl Into<String>,
-        revision: impl Into<String>,
+        hostname: impl Into<alloc::string::String>,
+        model: impl Into<alloc::string::String>,
+        revision: impl Into<alloc::string::String>,
     ) -> Self {
         Self {
             hostname: hostname.into(),
             model: model.into(),
             revision: revision.into(),
+            ..self
+        }
+    }
+
+    /// Refer to the LibCSP documentation
+    #[cfg(not(feature = "alloc"))]
+    pub fn details(
+        self,
+        hostname: &'static str,
+        model: &'static str,
+        revision: &'static str,
+    ) -> Self {
+        Self {
+            hostname,
+            model,
+            revision,
             ..self
         }
     }
@@ -265,14 +330,29 @@ impl LibCspConfig {
     }
 
     fn to_csp_conf_t(&self) -> csp_conf_t {
-        csp_conf_t {
-            version: 2,
-            address: self.address,
-            hostname: to_owned_c_str_ptr(&self.hostname),
-            model: to_owned_c_str_ptr(&self.model),
-            revision: to_owned_c_str_ptr(&self.revision),
-            conn_dfl_so: self.conn_dfl_so,
-            dedup: self.dedup,
+        #[cfg(feature = "alloc")]
+        {
+            csp_conf_t {
+                version: 2,
+                address: self.address,
+                hostname: to_owned_c_str_ptr(&self.hostname),
+                model: to_owned_c_str_ptr(&self.model),
+                revision: to_owned_c_str_ptr(&self.revision),
+                conn_dfl_so: self.conn_dfl_so,
+                dedup: self.dedup,
+            }
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            csp_conf_t {
+                version: 2,
+                address: self.address,
+                hostname: self.hostname.as_ptr() as *const i8,
+                model: self.model.as_ptr() as *const i8,
+                revision: self.revision.as_ptr() as *const i8,
+                conn_dfl_so: self.conn_dfl_so,
+                dedup: self.dedup,
+            }
         }
     }
 }
@@ -281,9 +361,18 @@ impl Default for LibCspConfig {
     fn default() -> Self {
         Self {
             address: 1,
-            hostname: "{hostname unspecified}".to_string(),
-            model: "{model unspecified}".to_string(),
-            revision: "{resvision unspecified}".to_string(),
+            #[cfg(feature = "alloc")]
+            hostname: alloc::string::ToString::to_string("{hostname unspecified}"),
+            #[cfg(not(feature = "alloc"))]
+            hostname: "{hostname unspecified}\0",
+            #[cfg(feature = "alloc")]
+            model: alloc::string::ToString::to_string("{model unspecified}"),
+            #[cfg(not(feature = "alloc"))]
+            model: "{model unspecified}\0",
+            #[cfg(feature = "alloc")]
+            revision: alloc::string::ToString::to_string("{resvision unspecified}"),
+            #[cfg(not(feature = "alloc"))]
+            revision: "{resvision unspecified}\0",
             dedup: 1,
             conn_dfl_so: CSP_O_NONE,
             connection_backlog: 64,

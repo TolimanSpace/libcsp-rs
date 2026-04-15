@@ -1,4 +1,6 @@
-use std::{ops::Deref, ptr::NonNull, time::Duration, io::Write};
+use core::{ops::Deref, ptr::NonNull, time::Duration};
+#[cfg(feature = "std")]
+use std::io::{Read, Write};
 use libcsp_sys::{
     csp_buffer_free, csp_conn_dport, csp_conn_dst, csp_conn_sport, csp_conn_src,
     csp_conn_t, csp_packet_t, csp_read, csp_send, csp_buffer_get, csp_buffer_data_size,
@@ -81,11 +83,14 @@ impl CspConnection {
         if data.len() > self.max_buffer_size as usize {
             return Err(CspError {
                 kind: CspErrorKind::Inval,
-                message: format!(
+                #[cfg(feature = "alloc")]
+                message: alloc::format!(
                     "Data length {} exceeds maximum buffer size {}",
                     data.len(),
                     self.max_buffer_size
                 ),
+                #[cfg(not(feature = "alloc"))]
+                message: "Data length exceeds maximum buffer size",
             });
         }
 
@@ -104,19 +109,25 @@ impl CspConnection {
             if packet.is_null() {
                 return Err(CspError {
                     kind: CspErrorKind::Nomem,
-                    message: "Failed to get CSP buffer".to_string(),
+                    #[cfg(feature = "alloc")]
+                    message: alloc::string::ToString::to_string("Failed to get CSP buffer"),
+                    #[cfg(not(feature = "alloc"))]
+                    message: "Failed to get CSP buffer",
                 });
             }
 
             let data_ptr = &mut (*packet).__bindgen_anon_2.data as *mut _ as *mut u8;
-            let slice = std::slice::from_raw_parts_mut(data_ptr, self.max_buffer_size as usize);
+            let slice = core::slice::from_raw_parts_mut(data_ptr, self.max_buffer_size as usize);
             let length = f(slice);
 
             if length > self.max_buffer_size as usize {
                 csp_buffer_free(packet as *mut _);
                 return Err(CspError {
                     kind: CspErrorKind::Inval,
-                    message: "Data length exceeds maximum buffer size".to_string(),
+                    #[cfg(feature = "alloc")]
+                    message: alloc::string::ToString::to_string("Data length exceeds maximum buffer size"),
+                    #[cfg(not(feature = "alloc"))]
+                    message: "Data length exceeds maximum buffer size",
                 });
             }
 
@@ -179,7 +190,7 @@ impl CspPacket {
         let data =
             unsafe { &(*self.packet.as_ptr()).__bindgen_anon_2.data as *const _ as *const u8 };
         let length = unsafe { (*self.packet.as_ptr()).length };
-        unsafe { std::slice::from_raw_parts(data, length as usize) }
+        unsafe { core::slice::from_raw_parts(data, length as usize) }
     }
 }
 
@@ -193,7 +204,7 @@ impl Deref for CspPacket {
 
 impl Drop for CspPacket {
     fn drop(&mut self) {
-        unsafe { csp_buffer_free(self.packet.as_ptr() as *mut std::os::raw::c_void) };
+        unsafe { csp_buffer_free(self.packet.as_ptr() as *mut _) };
     }
 }
 
@@ -223,7 +234,8 @@ impl CspConnectionPacketReader {
     }
 }
 
-impl<'a> std::io::Read for CspConnectionPacketReader {
+#[cfg(feature = "std")]
+impl Read for CspConnectionPacketReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
         let mut remaining_buf = buf;
@@ -256,11 +268,11 @@ impl<'a> std::io::Read for CspConnectionPacketReader {
             let slice = unsafe {
                 let data = &(*next_packet.as_ptr()).__bindgen_anon_2.data as *const _ as *const u8;
                 let length = (*next_packet.as_ptr()).length;
-                std::slice::from_raw_parts(data, length as usize)
+                core::slice::from_raw_parts(data, length as usize)
             };
             let remaining_packet = &slice[self.pos..];
 
-            let to_read = std::cmp::min(remaining_buf.len(), remaining_packet.len());
+            let to_read = core::cmp::min(remaining_buf.len(), remaining_packet.len());
 
             remaining_buf[..to_read].copy_from_slice(&remaining_packet[..to_read]);
             read += to_read;
@@ -282,7 +294,8 @@ pub struct CspConnectionWriter {
     pos: usize,
 }
 
-impl std::io::Write for CspConnectionWriter {
+#[cfg(feature = "std")]
+impl Write for CspConnectionWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let mut remaining_buf = buf;
         let mut written = 0;
@@ -313,13 +326,13 @@ impl std::io::Write for CspConnectionWriter {
 
             let slice = unsafe {
                 let data = &mut (*packet).__bindgen_anon_2.data as *mut _ as *mut u8;
-                let slice = std::slice::from_raw_parts_mut(data, (*packet).length as usize);
+                let slice = core::slice::from_raw_parts_mut(data, (*packet).length as usize);
                 slice
             };
 
             let remaining_slice = &mut slice[self.pos..];
 
-            let to_write = std::cmp::min(remaining_slice.len(), remaining_buf.len());
+            let to_write = core::cmp::min(remaining_slice.len(), remaining_buf.len());
             remaining_slice[..to_write].copy_from_slice(&remaining_buf[..to_write]);
             self.pos += to_write;
 
@@ -332,6 +345,7 @@ impl std::io::Write for CspConnectionWriter {
         }
     }
 
+    #[cfg(feature = "std")]
     fn flush(&mut self) -> std::io::Result<()> {
         let Some(packet) = self.packet.take() else {
             return Ok(());
@@ -349,6 +363,7 @@ impl std::io::Write for CspConnectionWriter {
 
 impl Drop for CspConnectionWriter {
     fn drop(&mut self) {
+        #[cfg(feature = "std")]
         self.flush().ok();
     }
 }
