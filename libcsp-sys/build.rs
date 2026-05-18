@@ -2,14 +2,19 @@ use std::env;
 use std::path::PathBuf;
 
 pub fn main() {
-    let libcsp = pkg_config::probe_library("libcsp").expect("libcsp not found via pkg-config");
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let libcsp_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("libcsp");
 
-    for path in &libcsp.link_paths {
-        println!("cargo:rustc-link-search=native={}", path.to_str().unwrap());
-    }
-    for lib in &libcsp.libs {
-        println!("cargo:rustc-link-lib=dylib={}", lib);
-    }
+    let dst = cmake::Config::new(&libcsp_path)
+        .define("CSP_POSIX", "1")
+        .define("CSP_USE_RDP", "ON")
+        .define("CSP_USE_HMAC", "ON")
+        .define("CSP_USE_PROMISC", "ON")
+        .define("CSP_USE_DEDUP", "ON")
+        .build();
+
+    println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    println!("cargo:rustc-link-lib=static=csp");
 
     if cfg!(feature = "zmq") {
         let zmq = pkg_config::probe_library("libzmq").expect("libzmq not found via pkg-config");
@@ -22,19 +27,13 @@ pub fn main() {
     }
 
     println!("cargo:rerun-if-changed=wrapper.h");
-
-    // Print paths for debugging if the build fails
-    for path in &libcsp.include_paths {
-        println!("cargo:warning=Found libcsp include path: {}", path.display());
-    }
+    println!("cargo:rerun-if-changed={}", libcsp_path.display());
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
         .use_core()
-        // This is important: tell bindgen to use the include paths from pkg-config
-        .clang_args(
-            libcsp.include_paths.iter().map(|path| format!("-I{}", path.to_string_lossy()))
-        );
+        .clang_arg(format!("-I{}/include", dst.display()))
+        .clang_arg(format!("-I{}", libcsp_path.join("include").display()));
 
     // Add feature-based defines
     if cfg!(feature = "zmq") { builder = builder.clang_arg("-DCSP_RS_ZMQ"); }
@@ -52,9 +51,7 @@ pub fn main() {
         .generate()
         .expect("Unable to generate bindings");
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(out_dir.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 }

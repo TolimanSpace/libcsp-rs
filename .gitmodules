@@ -1,0 +1,3 @@
+[submodule "libcsp-sys/libcsp"]
+	path = libcsp-sys/libcsp
+	url = https://github.com/TolimanSpace/libcsp.git
