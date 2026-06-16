@@ -12,9 +12,10 @@ alloc = ["libcsp-sys/alloc"]
 
 zmq = ["std", "libcsp-sys/zmq"]
 usart = ["std", "libcsp-sys/usart"]
-socketcan = ["std", "libcsp-sys/socketcan"]
+socketcan = ["std", "libcsp-sys/socketcan", "dep:socketcan"]
 
 [dependencies]
 libcsp-sys = { path = "../libcsp-sys", default-features = false }
+socketcan = { version = "3.3.0", optional = true }
 once_cell = { version = "1.19.0", optional = true }
 spin = { version = "0.9.8", features = ["mutex", "lock_api", "lazy"] }

@@ -1,7 +1,3 @@
----
-sessionId: session-260616-153715-fzjt
----
-
 # Requirements
 
 ### Overview & Goals
