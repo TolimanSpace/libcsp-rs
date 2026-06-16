@@ -155,20 +155,19 @@ impl LibCspInstance {
 
     #[cfg(feature = "alloc")]
     pub fn open_server_socket(&self, port: CspPort) -> Result<CspSocket, CspError> {
-        //TODO: remove unsafe if possible
+        use alloc::boxed::Box;
+        // In LibCSP v2.0, we must provide the memory for the socket.
+        let socket_ptr = Box::into_raw(Box::new(unsafe { core::mem::zeroed::<csp_socket_t>() }));
+
         unsafe {
-            use alloc::boxed::Box;
-            // In LibCSP v2.0, we must provide the memory for the socket.
-            let socket_ptr = Box::into_raw(Box::new(core::mem::zeroed::<csp_socket_t>()));
-            
             csp_bind(socket_ptr, port.as_u8());
             csp_listen(socket_ptr, self.config.connection_backlog);
-
-            Ok(CspSocket::from_ptr(
-                socket_ptr,
-                self.config.service_timeout.as_millis() as u32,
-            ))
         }
+
+        Ok(CspSocket::from_ptr(
+            socket_ptr,
+            self.config.service_timeout.as_millis() as u32,
+        ))
     }
 
     #[cfg(feature = "alloc")]
