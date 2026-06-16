@@ -79,6 +79,15 @@ impl CspConnection {
         }
     }
 
+    pub fn read_packet(&self, timeout: Duration) -> Option<CspPacket> {
+        let packet = unsafe { csp_read(self.connection, timeout.as_millis() as u32) };
+        if packet.is_null() {
+            None
+        } else {
+            Some(CspPacket { packet: unsafe { NonNull::new_unchecked(packet) } })
+        }
+    }
+
     pub fn send_packet(&self, data: &[u8]) -> Result<(), CspError> {
         if data.len() > self.max_buffer_size as usize {
             return Err(CspError {

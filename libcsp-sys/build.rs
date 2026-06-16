@@ -40,14 +40,17 @@ pub fn main() {
     if cfg!(feature = "socketcan") { builder = builder.clang_arg("-DCSP_RS_SOCKETCAN"); }
     if cfg!(feature = "usart") { builder = builder.clang_arg("-DCSP_RS_USART"); }
 
-    // Also include standard include paths from the system/nix environment
-    if let Ok(c_include_path) = std::env::var("C_INCLUDE_PATH") {
-        for path in std::env::split_paths(&c_include_path) {
-            builder = builder.clang_arg(format!("-I{}", path.to_string_lossy()));
-        }
-    }
+    // We avoid manually adding C_INCLUDE_PATH to clang arguments because
+    // it can cause conflicts with the internal headers we want to use.
+    // Clang will already pick up C_INCLUDE_PATH from the environment.
 
     let bindings = builder
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .allowlist_type("csp_.*")
+        .allowlist_var("csp_.*")
+        .allowlist_var("CSP_.*")
+        .allowlist_function("csp_.*")
+        .allowlist_type("nexthop_t")
         .generate()
         .expect("Unable to generate bindings");
 

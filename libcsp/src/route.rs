@@ -77,4 +77,8 @@ impl Route {
     pub fn default_address() -> Self {
         Self::new(0).netmask(0)
     }
+
+    pub fn default() -> Self {
+        Self::default_address()
+    }
 }

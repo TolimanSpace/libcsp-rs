@@ -1,5 +1,6 @@
 #include <csp/csp.h>
 #include <csp/csp_types.h>
+#include <csp/csp_interface.h>
 #include <csp/csp_id.h>
 #include <csp/csp_rtable.h>
 #include <csp/interfaces/csp_if_lo.h>

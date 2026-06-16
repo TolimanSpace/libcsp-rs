@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["std", "alloc", "zmq"]
+default = ["std", "alloc"]
 std = ["libcsp-sys/std", "dep:once_cell"]
 alloc = ["libcsp-sys/alloc"]
 
@@ -15,6 +15,6 @@ usart = ["std", "libcsp-sys/usart"]
 socketcan = ["std", "libcsp-sys/socketcan"]
 
 [dependencies]
-libcsp-sys = { path = "../libcsp-sys", default-features = false }
+libcsp-sys = { path = "../libcsp-sys", default-features = false, version = "0.1.2" }
 once_cell = { version = "1.19.0", optional = true }
 spin = { version = "0.9.8", features = ["mutex", "lock_api", "lazy"] }
