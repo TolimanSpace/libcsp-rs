@@ -107,8 +107,12 @@ impl<'a> LibCspBuilder<'a> {
             csp_conf = config;
             csp_init();
             
+            // for channel in self.debug_channels {
+            //     csp_debug_set_level(*channel as u32, 1);
+            // }
+            
             // Add loopback route
-            csp_rtable_set(self.config.address, -1, core::ptr::addr_of_mut!(csp_if_lo), CSP_NO_VIA_ADDRESS as u16);
+            // csp_rtable_set(self.config.address, -1, core::ptr::addr_of_mut!(csp_if_lo), CSP_NO_VIA_ADDRESS as u16);
         }
 
         #[cfg(feature = "std")]
@@ -329,30 +333,25 @@ impl LibCspConfig {
     }
 
     fn to_csp_conf_t(&self) -> csp_conf_t {
+        let mut conf: csp_conf_t = unsafe { core::mem::zeroed() };
+        conf.version = 2;
+        conf.address = self.address;
+        conf.conn_dfl_so = self.conn_dfl_so;
+        conf.dedup = self.dedup;
+
         #[cfg(feature = "alloc")]
         {
-            csp_conf_t {
-                version: 2,
-                address: self.address,
-                hostname: to_owned_c_str_ptr(&self.hostname),
-                model: to_owned_c_str_ptr(&self.model),
-                revision: to_owned_c_str_ptr(&self.revision),
-                conn_dfl_so: self.conn_dfl_so,
-                dedup: self.dedup,
-            }
+            conf.hostname = to_owned_c_str_ptr(&self.hostname);
+            conf.model = to_owned_c_str_ptr(&self.model);
+            conf.revision = to_owned_c_str_ptr(&self.revision);
         }
         #[cfg(not(feature = "alloc"))]
         {
-            csp_conf_t {
-                version: 2,
-                address: self.address,
-                hostname: self.hostname.as_ptr() as *const i8,
-                model: self.model.as_ptr() as *const i8,
-                revision: self.revision.as_ptr() as *const i8,
-                conn_dfl_so: self.conn_dfl_so,
-                dedup: self.dedup,
-            }
+            conf.hostname = self.hostname.as_ptr() as *const i8;
+            conf.model = self.model.as_ptr() as *const i8;
+            conf.revision = self.revision.as_ptr() as *const i8;
         }
+        conf
     }
 }
 

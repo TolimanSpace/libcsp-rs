@@ -31,6 +31,7 @@ pub fn main() {
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
         .use_core()
+        .derive_default(true)
         // This is important: tell bindgen to use the include paths from pkg-config
         .clang_args(
             libcsp.include_paths.iter().map(|path| format!("-I{}", path.to_string_lossy()))

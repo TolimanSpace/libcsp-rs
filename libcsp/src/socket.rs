@@ -14,6 +14,9 @@ pub struct CspSocket {
     socket: NonNull<csp_socket_t>,
 }
 
+unsafe impl Send for CspSocket {}
+unsafe impl Sync for CspSocket {}
+
 impl CspSocket {
     /// Creates a `CspSocket` from a raw pointer to a CSP socket.
     ///

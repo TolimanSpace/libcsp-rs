@@ -17,6 +17,7 @@ pub struct CspConnection {
 }
 
 unsafe impl Send for CspConnection {}
+unsafe impl Sync for CspConnection {}
 
 impl CspConnection {
     /// Internal "new" function to create a `CspConnection` from a raw pointer to a CSP connection pointer.
@@ -77,6 +78,12 @@ impl CspConnection {
             packet: None,
             pos: 0,
         }
+    }
+
+    pub fn read_packet(&self, timeout: Duration) -> Option<CspPacket> {
+        let packet = unsafe { csp_read(self.connection, timeout.as_millis() as u32) };
+        let packet = NonNull::new(packet)?;
+        Some(CspPacket { packet })
     }
 
     pub fn send_packet(&self, data: &[u8]) -> Result<(), CspError> {
@@ -180,6 +187,7 @@ pub struct CspPacket {
 }
 
 unsafe impl Send for CspPacket {}
+unsafe impl Sync for CspPacket {}
 
 impl CspPacket {
     pub fn id(&self) -> CspId {

@@ -78,3 +78,9 @@ impl Route {
         Self::new(0).netmask(0)
     }
 }
+
+impl Default for Route {
+    fn default() -> Self {
+        Self::default_address()
+    }
+}

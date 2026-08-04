@@ -102,10 +102,11 @@ impl InterfaceBuilder for CspCanInterface<'_> {
             iface: ptr::null_mut(),
         }));
 
-        let iface_data = Box::into_raw(Box::new(csp_can_interface_data_t {
-            cfp_packet_counter: 0,
-            tx_func: Some(rust_csp_can_tx_frame),
-        }));
+        let mut iface_data_struct: csp_can_interface_data_t = unsafe { core::mem::zeroed() };
+        iface_data_struct.tx_func = Some(rust_csp_can_tx_frame);
+        // cfp_packet_counter is 0 by zeroed()
+
+        let iface_data = Box::into_raw(Box::new(iface_data_struct));
 
         let iface = Box::into_raw(Box::new(unsafe { core::mem::zeroed::<csp_iface_t>() }));
 
@@ -131,13 +132,13 @@ impl InterfaceBuilder for CspCanInterface<'_> {
                         if let CanFrame::Data(f) = frame {
                             let id = match f.id() {
                                 Id::Standard(id) => id.as_raw() as u32,
-                                Id::Extended(id) => id.as_raw() as u32 | 0x80000000,
+                                Id::Extended(id) => id.as_raw() as u32,
                             };
                             let data = f.data();
                             unsafe {
                                 csp_can_rx(
                                     context.iface,
-                                    id,
+                                    id & 0x1FFFFFFF,
                                     data.as_ptr(),
                                     data.len() as u8,
                                     ptr::null_mut(),
@@ -163,7 +164,7 @@ unsafe extern "C" fn rust_csp_can_tx_frame(
 ) -> i32 {
     let context = &*(driver_data as *const CspCanContext);
 
-    let can_id = if id & 0x80000000 != 0 {
+    let can_id = if id > 0x7FF {
         match ExtendedId::new(id & 0x1FFFFFFF) {
             Some(id) => Id::Extended(id),
             None => return CSP_ERR_INVAL,

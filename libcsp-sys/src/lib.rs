@@ -11,13 +11,13 @@ extern "C" {
 
 /// Get default CSP configuration. Bindgen doesn't pick up this header function, so we define it manually in Rust.
 pub unsafe fn csp_conf_get_defaults() -> csp_conf_t {
-    csp_conf_t {
-        version: 2,
-        address: 1,
-        hostname: b"hostname\0" as *const u8 as *const i8,
-        model: b"model\0" as *const u8 as *const i8,
-        revision: b"revision\0" as *const u8 as *const i8,
-        conn_dfl_so: CSP_O_NONE,
-        dedup: 1,
-    }
+    let mut conf: csp_conf_t = core::mem::zeroed();
+    conf.version = 2;
+    conf.address = 1;
+    conf.hostname = b"hostname\0".as_ptr() as *const i8;
+    conf.model = b"model\0".as_ptr() as *const i8;
+    conf.revision = b"revision\0".as_ptr() as *const i8;
+    conf.conn_dfl_so = CSP_O_NONE;
+    conf.dedup = 1;
+    conf
 }
